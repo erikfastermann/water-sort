@@ -11,6 +11,7 @@ COLOR_MAP = {
     "B": "#3498DB",   # Vibrant Blue
     "Y": "#F1C40F",   # Sunflower Yellow
     "S": "#000000",   # Black
+    "W": "#BDC3C7",   # Gray
     "NA": "#FFFFFF"   # Empty slot
 }
 
