@@ -6,6 +6,15 @@ where
     v: <StorageMapping<BITS> as StorageMapper>::Storage,
 }
 
+impl<const BITS: usize> Default for Bits<BITS>
+where
+    StorageMapping<BITS>: StorageMapper,
+{
+    fn default() -> Self {
+        Self { v: Storage::ZERO }
+    }
+}
+
 impl<const BITS: usize> Bits<BITS>
 where
     StorageMapping<BITS>: StorageMapper,
@@ -14,8 +23,20 @@ where
         v: <StorageMapping<BITS> as StorageMapper>::Storage::ZERO,
     };
 
-    pub fn has(self, index: usize) -> bool {
+    pub fn has(&self, index: usize) -> bool {
         self.v.has(index)
+    }
+
+    pub fn set(&mut self, index: usize, value: bool) {
+        self.v.set(index, value);
+    }
+
+    pub fn get_n(&self, offset: usize, bits: usize) -> u16 {
+        self.v.get_n(offset, bits)
+    }
+
+    pub fn set_n(&mut self, offset: usize, bits: usize, value: u16) {
+        self.v.set_n(offset, bits, value);
     }
 }
 
@@ -25,39 +46,100 @@ pub trait StorageMapper {
 
 pub struct StorageMapping<const BITS: usize>;
 
+impl StorageMapper for StorageMapping<0> {
+    type Storage = [u32; 0];
+}
+
 impl StorageMapper for StorageMapping<32> {
     type Storage = [u32; 1];
+}
+
+impl StorageMapper for StorageMapping<64> {
+    type Storage = [u32; 2];
 }
 
 impl StorageMapper for StorageMapping<128> {
     type Storage = [u32; 4];
 }
 
+impl StorageMapper for StorageMapping<256> {
+    type Storage = [u32; 8];
+}
+
 impl StorageMapper for StorageMapping<512> {
     type Storage = [u32; 16];
+}
+
+impl StorageMapper for StorageMapping<1024> {
+    type Storage = [u32; 32];
 }
 
 impl StorageMapper for StorageMapping<2048> {
     type Storage = [u32; 64];
 }
 
-trait Storage: Clone + Copy + PartialEq + Eq {
-    const ZERO: Self;
-
-    fn has(self, index: usize) -> bool;
-    fn set(&mut self, index: usize, value: bool);
+impl StorageMapper for StorageMapping<4096> {
+    type Storage = [u32; 128];
 }
 
+pub trait Storage: Clone + Copy + PartialEq + Eq {
+    const ZERO: Self;
+
+    fn has(&self, index: usize) -> bool;
+    fn set(&mut self, index: usize, value: bool);
+    fn get_n(&self, offset: usize, bits: usize) -> u16;
+    fn set_n(&mut self, offset: usize, bits: usize, value: u16);
+}
+
+/// It is fine to construct this with N == 0, but not to use it.
 impl<const N: usize> Storage for [u32; N] {
     const ZERO: Self = [0; N];
 
-    fn has(self, index: usize) -> bool {
-        debug_assert!(N.is_power_of_two() && index < N * 32);
+    fn has(&self, index: usize) -> bool {
+        assert_ne!(N, 0);
+        assert!(N.is_power_of_two());
+        debug_assert!(index < N * 32);
         self[(index / 32) & (N - 1)] & (1 << (index % 32)) != 0
     }
 
     fn set(&mut self, index: usize, value: bool) {
-        debug_assert!(N.is_power_of_two() && index < N * 32);
-        self[(index / 32) & (N - 1)] |= u32::from(value) << (index % 32);
+        assert_ne!(N, 0);
+        assert!(N.is_power_of_two());
+        debug_assert!(index < N * 32);
+        let slot = &mut self[(index / 32) & (N - 1)];
+        *slot &= !(1 << (index % 32));
+        *slot |= u32::from(value) << (index % 32);
+    }
+
+    fn get_n(&self, offset: usize, bits: usize) -> u16 {
+        // TODO: More efficient implementation.
+
+        assert!(bits >= 1);
+        assert!(bits <= 16);
+        debug_assert!(offset.checked_add(bits - 1).is_some_and(|n| n < N * 32));
+
+        let mut v = 0u16;
+        for i in 0..bits {
+            let x = self.has(offset + i);
+            v <<= 1;
+            v |= u16::from(x);
+        }
+
+        v
+    }
+
+    fn set_n(&mut self, offset: usize, bits: usize, value: u16) {
+        // TODO: More efficient implementation.
+
+        assert!(bits >= 1);
+        assert!(bits <= 16);
+        debug_assert!(offset.checked_add(bits - 1).is_some_and(|n| n < N * 32));
+        debug_assert!(value < u16::try_from(1 << bits).unwrap());
+
+        let mut v = value;
+        for i in (0..bits).rev() {
+            self.set(offset + i, v & 1 != 0);
+            v >>= 1;
+        }
     }
 }
