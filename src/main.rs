@@ -93,17 +93,6 @@ const BOTTLE_BITS: usize = 5;
 const COLOR_BITS: usize = 4;
 const SAFE_COUNTER_BITS: usize = 3;
 
-const HIDABLE_ITEMS: bool = true;
-const LOCKABLE_ITEMS: bool = true;
-const IMMOVABLE_BOTTLES: bool = true;
-const PLUGGABLE_BOTTLES: bool = true;
-const FREEZABLE_BOTTLES: bool = true;
-const CURTAINS: bool = true;
-const SAFES: bool = true;
-const LOCK_GROUPS: bool = true;
-const COLORED_BOTTLES: bool = true;
-const COLOR_CURTAINS: bool = true;
-
 /// Need an extra bit for the height and capacity.
 const BOTTLE_SIZE_BITS: usize = ITEM_BITS + 1;
 
@@ -115,14 +104,10 @@ const BOTTLE_COUNT: usize = 1 << BOTTLE_BITS;
 /// The zero value is reserved.
 const COLOR_COUNT: usize = 1 << COLOR_BITS;
 
-const fn storage_bits(active: bool, bits: usize) -> usize {
+const fn storage_bits(bits: usize) -> usize {
     assert!(bits <= 4096);
-    if active {
-        let bits = bits.next_power_of_two();
-        if bits < 32 { 32 } else { bits }
-    } else {
-        0
-    }
+    let bits = bits.next_power_of_two();
+    if bits < 32 { 32 } else { bits }
 }
 
 /// Represents the current game state without history.
@@ -134,30 +119,36 @@ struct State {
     /// Must be less than the maximum amount of bottles.
     bottle_count: u8,
 
-    content: Bits<{ storage_bits(true, ITEM_COUNT * BOTTLE_COUNT * COLOR_BITS) }>,
-    height: Bits<{ storage_bits(true, BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
+    content: Bits<{ storage_bits(ITEM_COUNT * BOTTLE_COUNT * COLOR_BITS) }>,
+    height: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
     // The capacity must be greater than zero.
-    capacity: Bits<{ storage_bits(true, BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
+    capacity: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
 
     // The user cannot see this color item. Only relevant for the solver when
     // pouring out of this bottle, items connected by color are only poured
-    // until the first invisible item.
-    item_visible: Bits<{ storage_bits(HIDABLE_ITEMS, ITEM_COUNT * BOTTLE_COUNT) }>,
+    // until the first invisible item. The top item should always be visible.
+    // Unused item slots must never be marked as hidden.
+    #[cfg(feature = "hidable_items")]
+    item_hidden: Bits<{ storage_bits(ITEM_COUNT * BOTTLE_COUNT) }>,
 
     // The current item can only be moved out of this bottle and only one at
     // a time. Pouring into this bottle is not allowed if the top item is
     // locked. The lock disappears once the item has been removed.
-    item_locked: Bits<{ storage_bits(LOCKABLE_ITEMS, ITEM_COUNT * BOTTLE_COUNT) }>,
+    #[cfg(feature = "lockable_items")]
+    item_locked: Bits<{ storage_bits(ITEM_COUNT * BOTTLE_COUNT) }>,
 
     // Can only fill into this bottle, never pour out of it. This does not
     // change after initialization.
-    bottle_movable: Bits<{ storage_bits(IMMOVABLE_BOTTLES, BOTTLE_COUNT) }>,
+    #[cfg(feature = "immovable_bottles")]
+    bottle_movable: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // Each move of any bottle, all plugged bottles are unplugged and
     // vice-versa. If a pluggable bottle is emptied, the plug is removed for
     // all future moves.
-    pluggable_bottle: Bits<{ storage_bits(PLUGGABLE_BOTTLES, BOTTLE_COUNT) }>,
-    bottle_plugged: Bits<{ storage_bits(PLUGGABLE_BOTTLES, BOTTLE_COUNT) }>,
+    #[cfg(feature = "pluggable_bottles")]
+    pluggable_bottle: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    #[cfg(feature = "pluggable_bottles")]
+    bottle_plugged: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // A frozen bottle can only be filled into, until it is unfrozen.
     // Unfreezing happens once a bottle inside a frozen group is solved.
@@ -167,18 +158,23 @@ struct State {
     // once, this never changes, just update the frozen bit. As freezing a
     // bottle is only sensible if it has at least one partner, the maximum
     // number of frozen groups should be 16 to be solvable.
-    frozen_group: Bits<{ storage_bits(FREEZABLE_BOTTLES, BOTTLE_COUNT * BOTTLE_BITS) }>,
-    frozen: Bits<{ storage_bits(FREEZABLE_BOTTLES, BOTTLE_COUNT) }>,
+    #[cfg(feature = "freezable_bottles")]
+    frozen_group: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
+    #[cfg(feature = "freezable_bottles")]
+    frozen: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // A bottle behind a curtain is not visible and cannot be interacted with.
     // When any other bottle is solved, each curtain group unlocks a bottle
     // in a defined order. Each bottle, except for two, can be behind a
     // curtain at the same time to be solvable and a curtain group can consist
     // of only a single bottle.
-    curtain_order: Bits<{ storage_bits(CURTAINS, BOTTLE_COUNT * BOTTLE_BITS) }>,
+    #[cfg(feature = "curtains")]
+    curtain_order: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
     // The zero offset is reserved to mark the end of valid groups.
-    group_offset: Bits<{ storage_bits(CURTAINS, BOTTLE_COUNT * BOTTLE_BITS) }>,
-    behind_curtain: Bits<{ storage_bits(CURTAINS, BOTTLE_COUNT) }>,
+    #[cfg(feature = "curtains")]
+    group_offset: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
+    #[cfg(feature = "curtains")]
+    behind_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // A bottle in a safe, meaning a counter greater than zero, is not visible
     // and cannot be interacted with. Each time any bottle is solved, all
@@ -186,28 +182,35 @@ struct State {
     // in the UI, but this is not relevant for the state representation. Each
     // bottle, except for two, could be stored in a safe at the same time to
     // be solvable.
-    safe_counter: Bits<{ storage_bits(SAFES, BOTTLE_COUNT * SAFE_COUNTER_BITS) }>,
+    #[cfg(feature = "safes")]
+    safe_counter: Bits<{ storage_bits(BOTTLE_COUNT * SAFE_COUNTER_BITS) }>,
 
     // All bottles in a locked group cannot be interacted with. One color item
     // has the associated key for each lock group. When this item is at the
     // top of a bottle, the group is unlocked. When multiple items can be
     // poured at the same time, the key must always be the top item.
-    lock_group: Bits<{ storage_bits(LOCK_GROUPS, BOTTLE_COUNT * BOTTLE_BITS) }>,
-    item_has_lock: Bits<{ storage_bits(LOCK_GROUPS, ITEM_COUNT * BOTTLE_COUNT) }>,
-    group_key_location:
-        Bits<{ storage_bits(LOCK_GROUPS, BOTTLE_COUNT * (ITEM_BITS + BOTTLE_BITS)) }>,
-    bottle_locked: Bits<{ storage_bits(LOCK_GROUPS, BOTTLE_COUNT) }>,
+    #[cfg(feature = "lock_groups")]
+    lock_group: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
+    #[cfg(feature = "lock_groups")]
+    item_has_lock: Bits<{ storage_bits(ITEM_COUNT * BOTTLE_COUNT) }>,
+    #[cfg(feature = "lock_groups")]
+    group_key_location: Bits<{ storage_bits(BOTTLE_COUNT * (ITEM_BITS + BOTTLE_BITS)) }>,
+    #[cfg(feature = "lock_groups")]
+    bottle_locked: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // Only items of a specific color can be poured into this bottle, or zero,
     // if all colors are allowed. Storing other colors in such a bottle is
     // allowed. This does not change after initialization.
-    bottle_color: Bits<{ storage_bits(COLORED_BOTTLES, BOTTLE_COUNT * COLOR_BITS) }>,
+    #[cfg(feature = "colored_bottles")]
+    bottle_color: Bits<{ storage_bits(BOTTLE_COUNT * COLOR_BITS) }>,
 
     // The bottle cannot be interacted with, until that specific color is
     // solved. The zero color implies that the bottle is not hidden by a
     // color curtain.
-    color_curtain: Bits<{ storage_bits(COLOR_CURTAINS, BOTTLE_COUNT * COLOR_BITS) }>,
-    color_curtain_active: Bits<{ storage_bits(COLOR_CURTAINS, BOTTLE_COUNT) }>,
+    #[cfg(feature = "color_curtains")]
+    color_curtain: Bits<{ storage_bits(BOTTLE_COUNT * COLOR_BITS) }>,
+    #[cfg(feature = "color_curtains")]
+    color_curtain_active: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 }
 
 // TODO:
@@ -256,10 +259,11 @@ impl State {
 
         for bottle in 1..self.bottle_count + 1 {
             let height = self.get_height(bottle);
+            let capacity = self.get_capacity(bottle);
             let bottom_color = self.get_color(bottle, 0);
             let colors_match = (1..height).all(|i| self.get_color(bottle, i) == bottom_color);
 
-            if height != 0 && !colors_match {
+            if height != 0 && (height != capacity || !colors_match) {
                 return false;
             }
         }
@@ -273,8 +277,10 @@ impl State {
         let mut index = 0;
 
         for from in 1..self.bottle_count + 1 {
+            let from_height = self.get_height(from);
+            debug_assert!(!self.get_item_hidden(from, from_height.saturating_sub(1)));
+
             for to in 1..self.bottle_count + 1 {
-                let from_height = self.get_height(from);
                 let to_height = self.get_height(to);
                 let to_capacity = self.get_capacity(to);
                 let space = to_capacity - to_height;
@@ -285,7 +291,8 @@ impl State {
                 let mut count = 1;
                 let mut same_color = true;
                 for i in (0..from_height.saturating_sub(1)).rev() {
-                    same_color &= self.get_color(from, i) == from_top_color;
+                    same_color &= (self.get_color(from, i) == from_top_color)
+                        & !self.get_item_hidden(from, i);
                     count += u8::from(same_color);
                 }
 
@@ -297,13 +304,24 @@ impl State {
                     continue;
                 }
 
+                let count = min(count, space);
+                let next_from_height = from_height.saturating_sub(count);
+                let next_from_top_index = next_from_height.saturating_sub(1);
+
+                let show_item =
+                    if self.get_item_hidden(from, next_from_top_index) && next_from_height > 0 {
+                        to_index(from, next_from_top_index)
+                    } else {
+                        0
+                    };
+
                 debug_assert!(index < buffer.len());
                 buffer[index % buffer.len()] = Move {
                     from_bottle: from,
                     to_bottle: to,
-                    count: min(count, space),
+                    count,
                     color: from_top_color,
-                    show_item: 0,
+                    show_item,
                     unlock_item: 0,
                     unplug_bottle: 0,
                     unfreeze_group: 0,
@@ -335,6 +353,15 @@ impl State {
 
         self.set_height(mov.from_bottle, from_height - mov.count);
         self.set_height(mov.to_bottle, to_height + mov.count);
+
+        #[cfg(feature = "hidable_items")]
+        if mov.show_item != 0 {
+            self.set_item_hidden(
+                from_index(mov.show_item).0,
+                from_index(mov.show_item).1,
+                false,
+            );
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -351,6 +378,15 @@ impl State {
 
         self.set_height(mov.from_bottle, from_height + mov.count);
         self.set_height(mov.to_bottle, to_height - mov.count);
+
+        #[cfg(feature = "hidable_items")]
+        if mov.show_item != 0 {
+            self.set_item_hidden(
+                from_index(mov.show_item).0,
+                from_index(mov.show_item).1,
+                true,
+            );
+        }
     }
 
     fn get_height(&self, bottle: u8) -> u8 {
@@ -359,6 +395,7 @@ impl State {
     }
 
     fn set_height(&mut self, bottle: u8, height: u8) {
+        debug_assert_ne!(bottle, 0);
         self.height.set_n(
             usize::from(bottle) * BOTTLE_SIZE_BITS,
             BOTTLE_SIZE_BITS,
@@ -372,6 +409,7 @@ impl State {
     }
 
     fn set_capacity(&mut self, bottle: u8, capacity: u8) {
+        debug_assert_ne!(bottle, 0);
         self.capacity.set_n(
             usize::from(bottle) * BOTTLE_SIZE_BITS,
             BOTTLE_SIZE_BITS,
@@ -387,11 +425,31 @@ impl State {
     }
 
     fn set_color(&mut self, bottle: u8, item: u8, color: u8) {
+        debug_assert_ne!(bottle, 0);
         self.content.set_n(
             usize::from(bottle) * ITEM_COUNT * COLOR_BITS + usize::from(item) * COLOR_BITS,
             COLOR_BITS,
             u16::from(color),
         );
+    }
+
+    fn get_item_hidden(&self, bottle: u8, item: u8) -> bool {
+        #[cfg(feature = "hidable_items")]
+        {
+            self.item_hidden
+                .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
+        }
+        #[cfg(not(feature = "hidable_items"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "hidable_items")]
+    fn set_item_hidden(&mut self, bottle: u8, item: u8, hidden: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.item_hidden
+            .set(usize::from(bottle) * ITEM_COUNT + usize::from(item), hidden);
     }
 }
 
@@ -436,8 +494,40 @@ impl TryFrom<&StateData> for State {
             }
         }
 
+        for (bottle, item) in value.hidden_items.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("hidden item bottle not in range".into());
+            }
+
+            if usize::from(item) >= value.content[usize::from(bottle)].len().saturating_sub(1) {
+                return Err("hidden item not in range".into());
+            }
+
+            state.set_item_hidden(bottle.checked_add(1).unwrap(), item, true);
+        }
+
         Ok(state)
     }
+}
+
+fn from_index(index: u16) -> (u8, u8) {
+    debug_assert!(
+        usize::try_from(index)
+            .ok()
+            .is_some_and(|n| n < BOTTLE_COUNT * ITEM_COUNT)
+    );
+    let bottle = index as usize / ITEM_COUNT;
+    let item = index as usize % ITEM_COUNT;
+    debug_assert!(u8::try_from(bottle).is_ok());
+    debug_assert!(u8::try_from(item).is_ok());
+    (bottle as u8, item as u8)
+}
+
+fn to_index(bottle: u8, item: u8) -> u16 {
+    debug_assert!(u16::try_from(ITEM_COUNT).is_ok());
+    debug_assert!(usize::from(bottle) < BOTTLE_COUNT);
+    debug_assert!(usize::from(item) < ITEM_COUNT);
+    u16::from(bottle) * ITEM_COUNT as u16 + u16::from(item)
 }
 
 /// Collect all changes to apply a move, which can be undone.
@@ -450,33 +540,36 @@ struct Move {
     count: u8,
     color: u8,
 
+    #[cfg(feature = "hidable_items")]
     show_item: u16,
+    #[cfg(feature = "lockable_items")]
     unlock_item: u16,
+    #[cfg(feature = "pluggable_bottles")]
     unplug_bottle: u16,
+    #[cfg(feature = "freezable_bottles")]
     unfreeze_group: u8,
-    lift_curtain: Bits<{ storage_bits(CURTAINS, BOTTLE_COUNT) }>,
-    decrement_safe_counters: Bits<{ storage_bits(SAFES, BOTTLE_COUNT) }>,
+    #[cfg(feature = "curtains")]
+    lift_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    #[cfg(feature = "safes")]
+    decrement_safe_counters: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    #[cfg(feature = "lock_groups")]
     remove_lock_group_key: u16,
-    unlock_bottles: Bits<{ storage_bits(LOCK_GROUPS, BOTTLE_COUNT) }>,
-    lift_color_curtain: Bits<{ storage_bits(COLOR_CURTAINS, BOTTLE_COUNT) }>,
+    #[cfg(feature = "lock_groups")]
+    unlock_bottles: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    #[cfg(feature = "color_curtains")]
+    lift_color_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 }
 
 struct StateData {
     content: Vec<Vec<u8>>,
     capacity: Vec<u8>,
+    hidden_items: Vec<(u8, u8)>,
 }
 
 // TODO:
 // - Bottle With Counter, Refilled When Empty With Counter Greater Than Zero
 
 fn main() -> Result<(), Box<dyn Error>> {
-    /*
-    let mut state = State::try_from(&StateData {
-        content: vec![vec![1, 1, 1], vec![2, 2, 2], vec![1, 2]],
-        capacity: vec![4, 4, 4],
-    })?;
-    */
-
     let mut state = State::try_from(&StateData {
         content: vec![
             vec![1, 5, 4],
@@ -488,6 +581,7 @@ fn main() -> Result<(), Box<dyn Error>> {
             vec![2, 6, 6, 2],
         ],
         capacity: vec![4; 7],
+        hidden_items: vec![],
     })?;
 
     println!("{}", state.search(20));

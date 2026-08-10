@@ -3,4 +3,29 @@ name = "water-sort"
 version = "0.1.0"
 edition = "2024"
 
+[features]
+default = [
+    "hidable_items",
+    "lockable_items",
+    "immovable_bottles",
+    "pluggable_bottles",
+    "freezable_bottles",
+    "curtains",
+    "safes",
+    "lock_groups",
+    "colored_bottles",
+    "color_curtains",
+]
+
+hidable_items = []
+lockable_items = []
+immovable_bottles = []
+pluggable_bottles = []
+freezable_bottles = []
+curtains = []
+safes = []
+lock_groups = []
+colored_bottles = []
+color_curtains = []
+
 [dependencies]

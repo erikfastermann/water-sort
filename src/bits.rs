@@ -46,10 +46,6 @@ pub trait StorageMapper {
 
 pub struct StorageMapping<const BITS: usize>;
 
-impl StorageMapper for StorageMapping<0> {
-    type Storage = [u32; 0];
-}
-
 impl StorageMapper for StorageMapping<32> {
     type Storage = [u32; 1];
 }
@@ -134,7 +130,7 @@ impl<const N: usize> Storage for [u32; N] {
         assert!(bits >= 1);
         assert!(bits <= 16);
         debug_assert!(offset.checked_add(bits - 1).is_some_and(|n| n < N * 32));
-        debug_assert!(value < u16::try_from(1 << bits).unwrap());
+        debug_assert!(value <= u16::try_from((1 << bits) - 1).unwrap());
 
         let mut v = value;
         for i in (0..bits).rev() {
