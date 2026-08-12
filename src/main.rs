@@ -84,6 +84,8 @@ bottles this could be even more powerful), boolean feature flags.
 
 use std::{cmp::min, error::Error};
 
+use serde::{Deserialize, Serialize};
+
 use crate::bits::Bits;
 
 mod bits;
@@ -288,20 +290,26 @@ impl State {
                 let from_top_color = self.get_color(from, from_height.saturating_sub(1));
                 let to_top_color = self.get_color(to, to_height.saturating_sub(1));
 
-                let mut count = 1;
-                let mut same_color = true;
-                for i in (0..from_height.saturating_sub(1)).rev() {
-                    same_color &= (self.get_color(from, i) == from_top_color)
-                        & !self.get_item_hidden(from, i);
-                    count += u8::from(same_color);
-                }
+                let to_top_item_locked = self.get_item_locked(to, to_height.saturating_sub(1));
 
                 if from == to
                     || from_height == 0
                     || space == 0
                     || (to_height > 0 && from_top_color != to_top_color)
+                    || (to_height > 0 && to_top_item_locked)
                 {
                     continue;
+                }
+
+                let from_top_item_locked = self.get_item_locked(from, from_height - 1);
+
+                let mut count = 1;
+                let mut include_next_item = !from_top_item_locked;
+                for i in (0..from_height - 1).rev() {
+                    include_next_item &= (self.get_color(from, i) == from_top_color)
+                        & !self.get_item_hidden(from, i)
+                        & !self.get_item_locked(from, i);
+                    count += u8::from(include_next_item);
                 }
 
                 let count = min(count, space);
@@ -315,14 +323,22 @@ impl State {
                         0
                     };
 
+                let unlock_item = if from_top_item_locked {
+                    to_index(from, from_height - 1)
+                } else {
+                    0
+                };
+
                 debug_assert!(index < buffer.len());
                 buffer[index % buffer.len()] = Move {
                     from_bottle: from,
                     to_bottle: to,
                     count,
                     color: from_top_color,
+                    #[cfg(feature = "hidable_items")]
                     show_item,
-                    unlock_item: 0,
+                    #[cfg(feature = "lockable_items")]
+                    unlock_item,
                     unplug_bottle: 0,
                     unfreeze_group: 0,
                     lift_curtain: Bits::ZERO,
@@ -356,11 +372,14 @@ impl State {
 
         #[cfg(feature = "hidable_items")]
         if mov.show_item != 0 {
-            self.set_item_hidden(
-                from_index(mov.show_item).0,
-                from_index(mov.show_item).1,
-                false,
-            );
+            let (bottle, item) = from_index(mov.show_item);
+            self.set_item_hidden(bottle, item, false);
+        }
+
+        #[cfg(feature = "lockable_items")]
+        if mov.unlock_item != 0 {
+            let (bottle, item) = from_index(mov.unlock_item);
+            self.set_item_locked(bottle, item, false);
         }
     }
 
@@ -381,11 +400,14 @@ impl State {
 
         #[cfg(feature = "hidable_items")]
         if mov.show_item != 0 {
-            self.set_item_hidden(
-                from_index(mov.show_item).0,
-                from_index(mov.show_item).1,
-                true,
-            );
+            let (bottle, item) = from_index(mov.show_item);
+            self.set_item_hidden(bottle, item, true);
+        }
+
+        #[cfg(feature = "lockable_items")]
+        if mov.unlock_item != 0 {
+            let (bottle, item) = from_index(mov.unlock_item);
+            self.set_item_locked(bottle, item, true);
         }
     }
 
@@ -451,6 +473,25 @@ impl State {
         self.item_hidden
             .set(usize::from(bottle) * ITEM_COUNT + usize::from(item), hidden);
     }
+
+    fn get_item_locked(&self, bottle: u8, item: u8) -> bool {
+        #[cfg(feature = "lockable_items")]
+        {
+            self.item_locked
+                .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
+        }
+        #[cfg(not(feature = "lockable_items"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "lockable_items")]
+    fn set_item_locked(&mut self, bottle: u8, item: u8, locked: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.item_locked
+            .set(usize::from(bottle) * ITEM_COUNT + usize::from(item), locked);
+    }
 }
 
 impl TryFrom<&StateData> for State {
@@ -494,6 +535,7 @@ impl TryFrom<&StateData> for State {
             }
         }
 
+        #[cfg(feature = "hidable_items")]
         for (bottle, item) in value.hidden_items.iter().copied() {
             if usize::from(bottle) >= value.content.len() {
                 return Err("hidden item bottle not in range".into());
@@ -504,6 +546,19 @@ impl TryFrom<&StateData> for State {
             }
 
             state.set_item_hidden(bottle.checked_add(1).unwrap(), item, true);
+        }
+
+        #[cfg(feature = "lockable_items")]
+        for (bottle, item) in value.locked_items.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("locked item bottle not in range".into());
+            }
+
+            if usize::from(item) >= value.content[usize::from(bottle)].len() {
+                return Err("locked item not in range".into());
+            }
+
+            state.set_item_locked(bottle.checked_add(1).unwrap(), item, true);
         }
 
         Ok(state)
@@ -560,10 +615,19 @@ struct Move {
     lift_color_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 }
 
+#[derive(Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
 struct StateData {
     content: Vec<Vec<u8>>,
     capacity: Vec<u8>,
+
+    #[cfg(feature = "hidable_items")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     hidden_items: Vec<(u8, u8)>,
+
+    #[cfg(feature = "lockable_items")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    locked_items: Vec<(u8, u8)>,
 }
 
 // TODO:
@@ -582,6 +646,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ],
         capacity: vec![4; 7],
         hidden_items: vec![],
+        locked_items: vec![],
     })?;
 
     println!("{}", state.search(20));
