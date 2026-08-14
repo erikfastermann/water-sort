@@ -142,7 +142,7 @@ struct State {
     // Can only fill into this bottle, never pour out of it. This does not
     // change after initialization.
     #[cfg(feature = "immovable_bottles")]
-    bottle_movable: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    bottle_immovable: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // Each move of any bottle, all plugged bottles are unplugged and
     // vice-versa. If a pluggable bottle is emptied, the plug is removed for
@@ -282,6 +282,10 @@ impl State {
             let from_height = self.get_height(from);
             debug_assert!(!self.get_item_hidden(from, from_height.saturating_sub(1)));
 
+            if self.get_bottle_immovable(from) || self.get_bottle_plugged(from) {
+                continue;
+            }
+
             for to in 1..self.bottle_count + 1 {
                 let to_height = self.get_height(to);
                 let to_capacity = self.get_capacity(to);
@@ -297,6 +301,7 @@ impl State {
                     || space == 0
                     || (to_height > 0 && from_top_color != to_top_color)
                     || (to_height > 0 && to_top_item_locked)
+                    || self.get_bottle_plugged(to)
                 {
                     continue;
                 }
@@ -329,6 +334,12 @@ impl State {
                     0
                 };
 
+                let unplug_bottle = if next_from_height == 0 && self.get_pluggable_bottle(from) {
+                    from
+                } else {
+                    0
+                };
+
                 debug_assert!(index < buffer.len());
                 buffer[index % buffer.len()] = Move {
                     from_bottle: from,
@@ -339,7 +350,8 @@ impl State {
                     show_item,
                     #[cfg(feature = "lockable_items")]
                     unlock_item,
-                    unplug_bottle: 0,
+                    #[cfg(feature = "pluggable_bottles")]
+                    unplug_bottle,
                     unfreeze_group: 0,
                     lift_curtain: Bits::ZERO,
                     decrement_safe_counters: Bits::ZERO,
@@ -381,6 +393,15 @@ impl State {
             let (bottle, item) = from_index(mov.unlock_item);
             self.set_item_locked(bottle, item, false);
         }
+
+        #[cfg(feature = "pluggable_bottles")]
+        {
+            if mov.unplug_bottle != 0 {
+                debug_assert!(!self.get_bottle_plugged(mov.unplug_bottle));
+                self.set_pluggable_bottle(mov.unplug_bottle, false);
+            }
+            self.bottle_plugged = !self.bottle_plugged & self.pluggable_bottle;
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -408,6 +429,14 @@ impl State {
         if mov.unlock_item != 0 {
             let (bottle, item) = from_index(mov.unlock_item);
             self.set_item_locked(bottle, item, true);
+        }
+
+        #[cfg(feature = "pluggable_bottles")]
+        {
+            self.bottle_plugged = !self.bottle_plugged & self.pluggable_bottle;
+            if mov.unplug_bottle != 0 {
+                self.set_pluggable_bottle(mov.unplug_bottle, true);
+            }
         }
     }
 
@@ -492,6 +521,57 @@ impl State {
         self.item_locked
             .set(usize::from(bottle) * ITEM_COUNT + usize::from(item), locked);
     }
+
+    fn get_bottle_immovable(&self, bottle: u8) -> bool {
+        #[cfg(feature = "immovable_bottles")]
+        {
+            self.bottle_immovable.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "immovable_bottles"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "immovable_bottles")]
+    fn set_bottle_immovable(&mut self, bottle: u8, immovable: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.bottle_immovable.set(usize::from(bottle), immovable);
+    }
+
+    fn get_pluggable_bottle(&self, bottle: u8) -> bool {
+        #[cfg(feature = "pluggable_bottles")]
+        {
+            self.pluggable_bottle.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "pluggable_bottles"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "pluggable_bottles")]
+    fn set_pluggable_bottle(&mut self, bottle: u8, pluggable: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.pluggable_bottle.set(usize::from(bottle), pluggable);
+    }
+
+    fn get_bottle_plugged(&self, bottle: u8) -> bool {
+        #[cfg(feature = "pluggable_bottles")]
+        {
+            self.bottle_plugged.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "pluggable_bottles"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "pluggable_bottles")]
+    fn set_bottle_plugged(&mut self, bottle: u8, plugged: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.bottle_plugged.set(usize::from(bottle), plugged);
+    }
 }
 
 impl TryFrom<&StateData> for State {
@@ -535,6 +615,8 @@ impl TryFrom<&StateData> for State {
             }
         }
 
+        // TODO: We could check for duplicates for the following items.
+
         #[cfg(feature = "hidable_items")]
         for (bottle, item) in value.hidden_items.iter().copied() {
             if usize::from(bottle) >= value.content.len() {
@@ -559,6 +641,25 @@ impl TryFrom<&StateData> for State {
             }
 
             state.set_item_locked(bottle.checked_add(1).unwrap(), item, true);
+        }
+
+        #[cfg(feature = "immovable_bottles")]
+        for bottle in value.immovable_bottles.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("immovable bottle not in range".into());
+            }
+
+            state.set_bottle_immovable(bottle.checked_add(1).unwrap(), true);
+        }
+
+        #[cfg(feature = "pluggable_bottles")]
+        for (bottle, start_plugged) in value.pluggable_bottles.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("pluggable bottle not in range".into());
+            }
+
+            state.set_pluggable_bottle(bottle.checked_add(1).unwrap(), true);
+            state.set_bottle_plugged(bottle.checked_add(1).unwrap(), start_plugged);
         }
 
         Ok(state)
@@ -600,7 +701,7 @@ struct Move {
     #[cfg(feature = "lockable_items")]
     unlock_item: u16,
     #[cfg(feature = "pluggable_bottles")]
-    unplug_bottle: u16,
+    unplug_bottle: u8,
     #[cfg(feature = "freezable_bottles")]
     unfreeze_group: u8,
     #[cfg(feature = "curtains")]
@@ -628,6 +729,14 @@ struct StateData {
     #[cfg(feature = "lockable_items")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     locked_items: Vec<(u8, u8)>,
+
+    #[cfg(feature = "immovable_bottles")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    immovable_bottles: Vec<u8>,
+
+    #[cfg(feature = "pluggable_bottles")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pluggable_bottles: Vec<(u8, bool)>,
 }
 
 // TODO:
@@ -647,6 +756,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         capacity: vec![4; 7],
         hidden_items: vec![],
         locked_items: vec![],
+        immovable_bottles: vec![],
+        pluggable_bottles: vec![],
     })?;
 
     println!("{}", state.search(20));

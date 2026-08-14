@@ -1,3 +1,5 @@
+use std::ops::{BitAnd, Not};
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct Bits<const BITS: usize>
 where
@@ -12,6 +14,30 @@ where
 {
     fn default() -> Self {
         Self { v: Storage::ZERO }
+    }
+}
+
+impl<const BITS: usize> BitAnd for Bits<BITS>
+where
+    StorageMapping<BITS>: StorageMapper,
+{
+    type Output = Self;
+
+    fn bitand(self, rhs: Self) -> Self::Output {
+        Self {
+            v: self.v.bitand(rhs.v),
+        }
+    }
+}
+
+impl<const BITS: usize> Not for Bits<BITS>
+where
+    StorageMapping<BITS>: StorageMapper,
+{
+    type Output = Self;
+
+    fn not(self) -> Self::Output {
+        Self { v: self.v.not() }
     }
 }
 
@@ -85,9 +111,14 @@ pub trait Storage: Clone + Copy + PartialEq + Eq {
     fn set(&mut self, index: usize, value: bool);
     fn get_n(&self, offset: usize, bits: usize) -> u16;
     fn set_n(&mut self, offset: usize, bits: usize, value: u16);
+
+    fn bitand(self, rhs: Self) -> Self;
+    fn not(self) -> Self;
 }
 
-/// It is fine to construct this with N == 0, but not to use it.
+/// Using this in release builds with out-of-bounds indices will silently write
+/// to other fields, not unsafe, just wrong. This is done as a performance
+/// optimization. It is fine to construct this with N == 0, but not to use it.
 impl<const N: usize> Storage for [u32; N] {
     const ZERO: Self = [0; N];
 
@@ -137,5 +168,19 @@ impl<const N: usize> Storage for [u32; N] {
             self.set(offset + i, v & 1 != 0);
             v >>= 1;
         }
+    }
+
+    fn bitand(mut self, rhs: Self) -> Self {
+        for (a, b) in self.iter_mut().zip(rhs) {
+            *a &= b;
+        }
+        self
+    }
+
+    fn not(mut self) -> Self {
+        for a in self.iter_mut() {
+            *a = !(*a);
+        }
+        self
     }
 }
