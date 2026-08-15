@@ -114,8 +114,9 @@ const fn storage_bits(bits: usize) -> usize {
 
 /// Represents the current game state without history.
 ///
-/// At most one of the following can be chosen per bottle: curtain, safe, or
-/// lock.
+/// Each color has exactly one bottle, so the count per color must be less than
+/// the maximum bottle size. At most one of the following can be chosen per
+/// bottle: curtain, safe, or lock.
 #[derive(Clone, Copy, Default)]
 struct State {
     /// Must be less than the maximum amount of bottles.
@@ -126,6 +127,7 @@ struct State {
     // The capacity must be greater than zero.
     capacity: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
     bottle_finalized: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    color_count: Bits<{ storage_bits(COLOR_COUNT * BOTTLE_SIZE_BITS) }>,
 
     // The user cannot see this color item. Only relevant for the solver when
     // pouring out of this bottle, items connected by color are only poured
@@ -515,28 +517,26 @@ impl State {
     }
 
     fn compute_bottle_finalized(&self, bottle: u8, add_count: u8, add_color: u8) -> bool {
-        // TODO:
-        // We currently mark a bottle as finalized, when height == capacity and
-        // all colors are equal. This might not be the condition we want, as
-        // parking a color partially in a smaller bottle marks the bottle as
-        // finalized and we cannot interact with it anymore. This makes
-        // one-sized bottles especially useless. A potential fix could be to
-        // store the count of each color and only mark the puzzle as solvable
-        // if the capacity of the destination bottle also matches the color
-        // count.
-
         debug_assert_eq!(add_count == 0, add_color == 0);
         let height = self.get_height(bottle);
         let capacity = self.get_capacity(bottle);
-        let bottom_color = self.get_color(bottle, 0);
+        let new_bottom_color = {
+            let bottom_color = self.get_color(bottle, 0);
+            if bottom_color == 0 {
+                add_color
+            } else {
+                bottom_color
+            }
+        };
         let finalized = (0..height).all(|i| {
-            (self.get_color(bottle, i) == bottom_color)
+            (self.get_color(bottle, i) == new_bottom_color)
                 & !self.get_item_hidden(bottle, i)
                 & !self.get_item_locked(bottle, i)
         });
         (height + add_count == capacity)
             && finalized
-            && (add_color == 0 || add_color == bottom_color)
+            && (add_color == 0 || add_color == new_bottom_color)
+            && self.get_color_count(new_bottom_color) == capacity
     }
 
     fn get_bottle_finalized(&self, bottle: u8) -> bool {
@@ -546,6 +546,21 @@ impl State {
     fn set_bottle_finalized(&mut self, bottle: u8, finalized: bool) {
         debug_assert_ne!(bottle, 0);
         self.bottle_finalized.set(usize::from(bottle), finalized);
+    }
+
+    fn get_color_count(&self, color: u8) -> u8 {
+        self.color_count
+            .get_n(usize::from(color) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
+    }
+
+    fn set_color_count(&mut self, color: u8, count: u8) {
+        debug_assert_ne!(color, 0);
+        debug_assert!(usize::from(count) <= ITEM_COUNT);
+        self.color_count.set_n(
+            usize::from(color) * BOTTLE_SIZE_BITS,
+            BOTTLE_SIZE_BITS,
+            u16::from(count),
+        );
     }
 
     fn get_item_hidden(&self, bottle: u8, item: u8) -> bool {
@@ -708,6 +723,9 @@ impl TryFrom<&StateData> for State {
         if value.content.iter().any(|v| v.len() > ITEM_COUNT) {
             return Err("bottle item count too large".into());
         }
+        if value.capacity.iter().any(|v| *v == 0) {
+            return Err("capacity zero".into());
+        }
         if value.capacity.iter().any(|v| usize::from(*v) > ITEM_COUNT) {
             return Err("capacity too large".into());
         }
@@ -722,6 +740,7 @@ impl TryFrom<&StateData> for State {
 
         let mut state = State::default();
         state.bottle_count = u8::try_from(value.content.len()).unwrap();
+        let mut color_counts = [0u8; COLOR_COUNT];
 
         for (index, bottle) in value.content.iter().enumerate() {
             let out_index = u8::try_from(index.checked_add(1).unwrap()).unwrap();
@@ -733,7 +752,16 @@ impl TryFrom<&StateData> for State {
                     return Err("invalid color value".into());
                 }
                 state.set_color(out_index, u8::try_from(item).unwrap(), color);
+
+                if usize::from(color_counts[usize::from(color)]) >= ITEM_COUNT {
+                    return Err("too many items of a single color".into());
+                }
+                color_counts[usize::from(color)] += 1;
             }
+        }
+
+        for (color, count) in color_counts.into_iter().enumerate().skip(1) {
+            state.set_color_count(u8::try_from(color).unwrap(), count);
         }
 
         // TODO: We could check for duplicates for the following items.
@@ -948,6 +976,6 @@ fn main() -> Result<(), Box<dyn Error>> {
         frozen_bottle_ranges: vec![],
     })?;
 
-    println!("{}", state.search(20));
+    println!("{}", state.search(11));
     Ok(())
 }
