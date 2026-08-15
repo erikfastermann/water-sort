@@ -125,6 +125,7 @@ struct State {
     height: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
     // The capacity must be greater than zero.
     capacity: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_SIZE_BITS) }>,
+    bottle_finalized: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // The user cannot see this color item. Only relevant for the solver when
     // pouring out of this bottle, items connected by color are only poured
@@ -155,13 +156,16 @@ struct State {
     // A frozen bottle can only be filled into, until it is unfrozen.
     // Unfreezing happens once a bottle inside a frozen group is solved.
     //
-    // Each bottle has an index of the group which this bottle is frozen with,
-    // or zero if the bottle was never frozen. If a bottle is marked as frozen
-    // once, this never changes, just update the frozen bit. As freezing a
-    // bottle is only sensible if it has at least one partner, the maximum
-    // number of frozen groups should be 16 to be solvable.
+    // A frozen group is marked by a run of bits, switching to zero if the
+    // current group is marked with one-bits and vice-versa. This means only
+    // bottles which are located next to each other in the bitset can be part
+    // of a group. Groups which are never frozen are also included, but simply
+    // never use the frozen bit. The group assignments never change after
+    // initialization. As freezing a bottle is only sensible if it has at least
+    // one partner, the maximum number of frozen groups should be no bigger than
+    // half of the number of bottles to be solvable.
     #[cfg(feature = "freezable_bottles")]
-    frozen_group: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
+    frozen_run: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "freezable_bottles")]
     frozen: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
@@ -257,15 +261,8 @@ impl State {
     }
 
     fn solved(&self) -> bool {
-        // TODO: Visible check?
-
         for bottle in 1..self.bottle_count + 1 {
-            let height = self.get_height(bottle);
-            let capacity = self.get_capacity(bottle);
-            let bottom_color = self.get_color(bottle, 0);
-            let colors_match = (1..height).all(|i| self.get_color(bottle, i) == bottom_color);
-
-            if height != 0 && (height != capacity || !colors_match) {
+            if self.get_height(bottle) != 0 && !self.get_bottle_finalized(bottle) {
                 return false;
             }
         }
@@ -282,7 +279,11 @@ impl State {
             let from_height = self.get_height(from);
             debug_assert!(!self.get_item_hidden(from, from_height.saturating_sub(1)));
 
-            if self.get_bottle_immovable(from) || self.get_bottle_plugged(from) {
+            if self.get_bottle_immovable(from)
+                || self.get_bottle_plugged(from)
+                || self.get_frozen(from)
+                || self.get_bottle_finalized(from)
+            {
                 continue;
             }
 
@@ -340,19 +341,30 @@ impl State {
                     0
                 };
 
+                let to_finalized = self.compute_bottle_finalized(to, count, from_top_color);
+                let finalize_bottle = if to_finalized { to } else { 0 };
+
                 debug_assert!(index < buffer.len());
                 buffer[index % buffer.len()] = Move {
                     from_bottle: from,
                     to_bottle: to,
                     count,
                     color: from_top_color,
+                    finalize_bottle,
                     #[cfg(feature = "hidable_items")]
                     show_item,
                     #[cfg(feature = "lockable_items")]
                     unlock_item,
                     #[cfg(feature = "pluggable_bottles")]
                     unplug_bottle,
-                    unfreeze_group: 0,
+                    #[cfg(feature = "freezable_bottles")]
+                    unfreeze_run: if to_finalized && self.get_frozen(to) {
+                        let run = self.bottle_run(self.frozen_run, to);
+                        debug_assert_eq!(run & self.frozen, run);
+                        run
+                    } else {
+                        Bits::ZERO
+                    },
                     lift_curtain: Bits::ZERO,
                     decrement_safe_counters: Bits::ZERO,
                     remove_lock_group_key: 0,
@@ -382,6 +394,10 @@ impl State {
         self.set_height(mov.from_bottle, from_height - mov.count);
         self.set_height(mov.to_bottle, to_height + mov.count);
 
+        if mov.finalize_bottle != 0 {
+            self.set_bottle_finalized(mov.finalize_bottle, true);
+        }
+
         #[cfg(feature = "hidable_items")]
         if mov.show_item != 0 {
             let (bottle, item) = from_index(mov.show_item);
@@ -402,6 +418,11 @@ impl State {
             }
             self.bottle_plugged = !self.bottle_plugged & self.pluggable_bottle;
         }
+
+        #[cfg(feature = "freezable_bottles")]
+        {
+            self.frozen &= !mov.unfreeze_run;
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -418,6 +439,10 @@ impl State {
 
         self.set_height(mov.from_bottle, from_height + mov.count);
         self.set_height(mov.to_bottle, to_height - mov.count);
+
+        if mov.finalize_bottle != 0 {
+            self.set_bottle_finalized(mov.finalize_bottle, false);
+        }
 
         #[cfg(feature = "hidable_items")]
         if mov.show_item != 0 {
@@ -437,6 +462,11 @@ impl State {
             if mov.unplug_bottle != 0 {
                 self.set_pluggable_bottle(mov.unplug_bottle, true);
             }
+        }
+
+        #[cfg(feature = "freezable_bottles")]
+        {
+            self.frozen |= mov.unfreeze_run;
         }
     }
 
@@ -482,6 +512,40 @@ impl State {
             COLOR_BITS,
             u16::from(color),
         );
+    }
+
+    fn compute_bottle_finalized(&self, bottle: u8, add_count: u8, add_color: u8) -> bool {
+        // TODO:
+        // We currently mark a bottle as finalized, when height == capacity and
+        // all colors are equal. This might not be the condition we want, as
+        // parking a color partially in a smaller bottle marks the bottle as
+        // finalized and we cannot interact with it anymore. This makes
+        // one-sized bottles especially useless. A potential fix could be to
+        // store the count of each color and only mark the puzzle as solvable
+        // if the capacity of the destination bottle also matches the color
+        // count.
+
+        debug_assert_eq!(add_count == 0, add_color == 0);
+        let height = self.get_height(bottle);
+        let capacity = self.get_capacity(bottle);
+        let bottom_color = self.get_color(bottle, 0);
+        let finalized = (0..height).all(|i| {
+            (self.get_color(bottle, i) == bottom_color)
+                & !self.get_item_hidden(bottle, i)
+                & !self.get_item_locked(bottle, i)
+        });
+        (height + add_count == capacity)
+            && finalized
+            && (add_color == 0 || add_color == bottom_color)
+    }
+
+    fn get_bottle_finalized(&self, bottle: u8) -> bool {
+        self.bottle_finalized.has(usize::from(bottle))
+    }
+
+    fn set_bottle_finalized(&mut self, bottle: u8, finalized: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.bottle_finalized.set(usize::from(bottle), finalized);
     }
 
     fn get_item_hidden(&self, bottle: u8, item: u8) -> bool {
@@ -571,6 +635,63 @@ impl State {
     fn set_bottle_plugged(&mut self, bottle: u8, plugged: bool) {
         debug_assert_ne!(bottle, 0);
         self.bottle_plugged.set(usize::from(bottle), plugged);
+    }
+
+    #[cfg(feature = "freezable_bottles")]
+    fn get_frozen_run(&self, bottle: u8) -> bool {
+        self.frozen_run.has(usize::from(bottle))
+    }
+
+    #[cfg(feature = "freezable_bottles")]
+    fn set_frozen_run(&mut self, bottle: u8, run: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.frozen_run.set(usize::from(bottle), run);
+    }
+
+    fn get_frozen(&self, bottle: u8) -> bool {
+        #[cfg(feature = "freezable_bottles")]
+        {
+            self.frozen.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "freezable_bottles"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "freezable_bottles")]
+    fn set_frozen(&mut self, bottle: u8, frozen: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.frozen.set(usize::from(bottle), frozen);
+    }
+
+    fn bottle_run(
+        &self,
+        b: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+        bottle: u8,
+    ) -> Bits<{ storage_bits(BOTTLE_COUNT) }> {
+        // TODO: Could use some faster bit magic.
+
+        debug_assert_ne!(bottle, 0);
+        let mut out = Bits::ZERO;
+        out.set(usize::from(bottle), true);
+        let offset_set = b.has(usize::from(bottle));
+
+        for i in (1..bottle).rev() {
+            if b.has(usize::from(i)) != offset_set {
+                break;
+            }
+            out.set(usize::from(i), true);
+        }
+
+        for i in bottle + 1..self.bottle_count + 1 {
+            if b.has(usize::from(i)) != offset_set {
+                break;
+            }
+            out.set(usize::from(i), true);
+        }
+
+        out
     }
 }
 
@@ -662,6 +783,67 @@ impl TryFrom<&StateData> for State {
             state.set_bottle_plugged(bottle.checked_add(1).unwrap(), start_plugged);
         }
 
+        #[cfg(feature = "freezable_bottles")]
+        {
+            if !value.frozen_bottle_ranges.is_sorted() {
+                return Err("freezable bottles not sorted".into());
+            }
+
+            for ((_, to_a), (from_b, _)) in value
+                .frozen_bottle_ranges
+                .iter()
+                .copied()
+                .zip(value.frozen_bottle_ranges.iter().copied().skip(1))
+            {
+                if to_a > from_b {
+                    return Err("freezable bottles ranges overlapping".into());
+                }
+            }
+
+            for (from, to) in value.frozen_bottle_ranges.iter().copied() {
+                if from >= to {
+                    return Err("freezable bottle invalid range".into());
+                }
+
+                if from > state.bottle_count || to > state.bottle_count {
+                    return Err("freezable bottle from or to not in range".into());
+                }
+            }
+
+            let mut current_bit = false;
+            let mut index = 1;
+
+            for (from, to) in value.frozen_bottle_ranges.iter().copied() {
+                let swap_bit = index < from + 1;
+                while index < from + 1 {
+                    state.set_frozen_run(index, current_bit);
+                    index += 1;
+                }
+                if swap_bit {
+                    current_bit = !current_bit;
+                }
+
+                for _ in from + 1..to + 1 {
+                    state.set_frozen_run(index, current_bit);
+                    state.set_frozen(index, true);
+                    index += 1;
+                }
+                current_bit = !current_bit;
+            }
+
+            while index < state.bottle_count + 1 {
+                state.set_frozen_run(index, current_bit);
+                index += 1;
+            }
+        }
+
+        // TODO: Forbid solved bottles?
+        for bottle in 1..state.bottle_count + 1 {
+            if state.compute_bottle_finalized(bottle, 0, 0) {
+                state.set_bottle_finalized(bottle, true);
+            }
+        }
+
         Ok(state)
     }
 }
@@ -695,6 +877,7 @@ struct Move {
     to_bottle: u8,
     count: u8,
     color: u8,
+    finalize_bottle: u8,
 
     #[cfg(feature = "hidable_items")]
     show_item: u16,
@@ -703,7 +886,7 @@ struct Move {
     #[cfg(feature = "pluggable_bottles")]
     unplug_bottle: u8,
     #[cfg(feature = "freezable_bottles")]
-    unfreeze_group: u8,
+    unfreeze_run: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "curtains")]
     lift_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "safes")]
@@ -737,6 +920,10 @@ struct StateData {
     #[cfg(feature = "pluggable_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pluggable_bottles: Vec<(u8, bool)>,
+
+    #[cfg(feature = "freezable_bottles")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    frozen_bottle_ranges: Vec<(u8, u8)>,
 }
 
 // TODO:
@@ -758,6 +945,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         locked_items: vec![],
         immovable_bottles: vec![],
         pluggable_bottles: vec![],
+        frozen_bottle_ranges: vec![],
     })?;
 
     println!("{}", state.search(20));

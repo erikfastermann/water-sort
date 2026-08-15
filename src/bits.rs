@@ -1,6 +1,10 @@
-use std::ops::{BitAnd, Not};
+use std::{
+    fmt::Debug,
+    ops::{BitAnd, BitAndAssign, BitOrAssign, Not},
+};
 
-#[derive(Clone, Copy, PartialEq, Eq)]
+// TODO: Proper Debug.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Bits<const BITS: usize>
 where
     StorageMapping<BITS>: StorageMapper,
@@ -27,6 +31,24 @@ where
         Self {
             v: self.v.bitand(rhs.v),
         }
+    }
+}
+
+impl<const BITS: usize> BitAndAssign for Bits<BITS>
+where
+    StorageMapping<BITS>: StorageMapper,
+{
+    fn bitand_assign(&mut self, rhs: Self) {
+        self.v.bitand_assign(rhs.v);
+    }
+}
+
+impl<const BITS: usize> BitOrAssign for Bits<BITS>
+where
+    StorageMapping<BITS>: StorageMapper,
+{
+    fn bitor_assign(&mut self, rhs: Self) {
+        self.v.bitor_assign(rhs.v);
     }
 }
 
@@ -104,7 +126,7 @@ impl StorageMapper for StorageMapping<4096> {
     type Storage = [u32; 128];
 }
 
-pub trait Storage: Clone + Copy + PartialEq + Eq {
+pub trait Storage: Debug + Clone + Copy + PartialEq + Eq {
     const ZERO: Self;
 
     fn has(&self, index: usize) -> bool;
@@ -113,6 +135,8 @@ pub trait Storage: Clone + Copy + PartialEq + Eq {
     fn set_n(&mut self, offset: usize, bits: usize, value: u16);
 
     fn bitand(self, rhs: Self) -> Self;
+    fn bitand_assign(&mut self, rhs: Self);
+    fn bitor_assign(&mut self, rhs: Self);
     fn not(self) -> Self;
 }
 
@@ -175,6 +199,18 @@ impl<const N: usize> Storage for [u32; N] {
             *a &= b;
         }
         self
+    }
+
+    fn bitand_assign(&mut self, rhs: Self) {
+        for (a, b) in self.iter_mut().zip(rhs) {
+            *a &= b;
+        }
+    }
+
+    fn bitor_assign(&mut self, rhs: Self) {
+        for (a, b) in self.iter_mut().zip(rhs) {
+            *a |= b;
+        }
     }
 
     fn not(mut self) -> Self {
