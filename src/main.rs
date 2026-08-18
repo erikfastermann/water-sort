@@ -106,6 +106,8 @@ const BOTTLE_COUNT: usize = 1 << BOTTLE_BITS;
 /// The zero value is reserved.
 const COLOR_COUNT: usize = 1 << COLOR_BITS;
 
+const MAX_SAFE_COUNTER: usize = (1 << SAFE_COUNTER_BITS) - 1;
+
 const fn storage_bits(bits: usize) -> usize {
     assert!(bits <= 4096);
     let bits = bits.next_power_of_two();
@@ -283,6 +285,7 @@ impl State {
                 || self.get_frozen(from)
                 || self.get_bottle_finalized(from)
                 || self.get_behind_curtain(from)
+                || self.get_safe_counter(from) != 0
             {
                 continue;
             }
@@ -304,6 +307,7 @@ impl State {
                     || (to_height > 0 && to_top_item_locked)
                     || self.get_bottle_plugged(to)
                     || self.get_behind_curtain(to)
+                    || self.get_safe_counter(to) != 0
                 {
                     continue;
                 }
@@ -378,7 +382,16 @@ impl State {
                     } else {
                         Bits::ZERO
                     },
-                    decrement_safe_counters: Bits::ZERO,
+                    #[cfg(feature = "safes")]
+                    decrement_safe_counter: if to_finalized {
+                        (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
+                            let counter = self.get_safe_counter(i);
+                            acc.set(usize::from(i), counter != 0);
+                            acc
+                        })
+                    } else {
+                        Bits::ZERO
+                    },
                     remove_lock_group_key: 0,
                     unlock_bottles: Bits::ZERO,
                     lift_color_curtain: Bits::ZERO,
@@ -452,6 +465,15 @@ impl State {
                 self.set_behind_curtain(to - 1, false);
             }
         }
+
+        #[cfg(feature = "safes")]
+        if mov.decrement_safe_counter != Bits::ZERO {
+            for i in 1..self.bottle_count + 1 {
+                let new_counter = self.get_safe_counter(i)
+                    - u8::from(mov.decrement_safe_counter.has(usize::from(i)));
+                self.set_safe_counter(i, new_counter);
+            }
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -509,6 +531,15 @@ impl State {
                 };
                 self.set_curtain_range(i, from, to + 1);
                 self.set_behind_curtain(to, true);
+            }
+        }
+
+        #[cfg(feature = "safes")]
+        if mov.decrement_safe_counter != Bits::ZERO {
+            for i in 1..self.bottle_count + 1 {
+                let new_counter = self.get_safe_counter(i)
+                    + u8::from(mov.decrement_safe_counter.has(usize::from(i)));
+                self.set_safe_counter(i, new_counter);
             }
         }
     }
@@ -757,6 +788,28 @@ impl State {
         self.behind_curtain.set(usize::from(bottle), behind_curtain);
     }
 
+    fn get_safe_counter(&self, bottle: u8) -> u8 {
+        #[cfg(feature = "safes")]
+        {
+            self.safe_counter
+                .get_n(usize::from(bottle) * SAFE_COUNTER_BITS, SAFE_COUNTER_BITS) as u8
+        }
+        #[cfg(not(feature = "safes"))]
+        {
+            0
+        }
+    }
+
+    #[cfg(feature = "safes")]
+    fn set_safe_counter(&mut self, bottle: u8, safe_counter: u8) {
+        debug_assert_ne!(bottle, 0);
+        self.safe_counter.set_n(
+            usize::from(bottle) * SAFE_COUNTER_BITS,
+            SAFE_COUNTER_BITS,
+            u16::from(safe_counter),
+        );
+    }
+
     fn compute_run(
         &self,
         ranges: &[(u8, u8)],
@@ -962,6 +1015,19 @@ impl TryFrom<&StateData> for State {
             }
         }
 
+        #[cfg(feature = "safes")]
+        {
+            for (bottle, counter) in value.safes.iter().copied() {
+                if usize::from(bottle) >= value.content.len() {
+                    return Err("safe counter not in range".into());
+                }
+                if usize::from(counter) > MAX_SAFE_COUNTER {
+                    return Err("safe counter value not in range".into());
+                }
+                state.set_safe_counter(bottle + 1, counter);
+            }
+        }
+
         // TODO: Forbid solved bottles?
         for bottle in 1..state.bottle_count + 1 {
             if state.compute_bottle_finalized(bottle, 0, 0) {
@@ -1015,7 +1081,7 @@ struct Move {
     #[cfg(feature = "curtains")]
     lift_curtain_range: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "safes")]
-    decrement_safe_counters: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    decrement_safe_counter: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "lock_groups")]
     remove_lock_group_key: u16,
     #[cfg(feature = "lock_groups")]
@@ -1053,6 +1119,10 @@ struct StateData {
     #[cfg(feature = "curtains")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     curtain_ranges: Vec<(u8, u8)>,
+
+    #[cfg(feature = "safes")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    safes: Vec<(u8, u8)>,
 }
 
 // TODO:
@@ -1076,6 +1146,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         pluggable_bottles: vec![],
         frozen_bottle_ranges: vec![],
         curtain_ranges: vec![],
+        safes: vec![],
     })?;
 
     println!("{}", state.search(11));
