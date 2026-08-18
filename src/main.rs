@@ -172,15 +172,12 @@ struct State {
     frozen: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
     // A bottle behind a curtain is not visible and cannot be interacted with.
-    // When any other bottle is solved, each curtain group unlocks a bottle
-    // in a defined order. Each bottle, except for two, can be behind a
-    // curtain at the same time to be solvable and a curtain group can consist
-    // of only a single bottle.
+    // When any other bottle is solved, each curtain group unlocks a bottle,
+    // ordered from the largest to the smallest index. Each bottle, except for
+    // two, can be behind a curtain at the same time to be solvable and a
+    // curtain group can consist of only a single bottle.
     #[cfg(feature = "curtains")]
-    curtain_order: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
-    // The zero offset is reserved to mark the end of valid groups.
-    #[cfg(feature = "curtains")]
-    group_offset: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
+    curtain_range: Bits<{ storage_bits(BOTTLE_COUNT * (BOTTLE_BITS + 1) * 2) }>,
     #[cfg(feature = "curtains")]
     behind_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
@@ -285,6 +282,7 @@ impl State {
                 || self.get_bottle_plugged(from)
                 || self.get_frozen(from)
                 || self.get_bottle_finalized(from)
+                || self.get_behind_curtain(from)
             {
                 continue;
             }
@@ -305,6 +303,7 @@ impl State {
                     || (to_height > 0 && from_top_color != to_top_color)
                     || (to_height > 0 && to_top_item_locked)
                     || self.get_bottle_plugged(to)
+                    || self.get_behind_curtain(to)
                 {
                     continue;
                 }
@@ -367,7 +366,18 @@ impl State {
                     } else {
                         Bits::ZERO
                     },
-                    lift_curtain: Bits::ZERO,
+                    #[cfg(feature = "curtains")]
+                    lift_curtain_range: if to_finalized {
+                        (0..self.bottle_count).fold(Bits::ZERO, |mut acc, i| {
+                            let value = self
+                                .get_curtain_range(i)
+                                .is_some_and(|(from, to)| to > from);
+                            acc.set(usize::from(i), value);
+                            acc
+                        })
+                    } else {
+                        Bits::ZERO
+                    },
                     decrement_safe_counters: Bits::ZERO,
                     remove_lock_group_key: 0,
                     unlock_bottles: Bits::ZERO,
@@ -425,6 +435,23 @@ impl State {
         {
             self.frozen &= !mov.unfreeze_run;
         }
+
+        #[cfg(feature = "curtains")]
+        if mov.lift_curtain_range != Bits::ZERO {
+            for i in 0..self.bottle_count {
+                if !mov.lift_curtain_range.has(usize::from(i)) {
+                    continue;
+                }
+                let Some((from, to)) = self.get_curtain_range(i) else {
+                    break;
+                };
+                debug_assert_ne!(from, 0);
+                debug_assert_ne!(to, 0);
+                self.set_curtain_range(i, from, to - 1);
+                debug_assert!(self.get_behind_curtain(to - 1));
+                self.set_behind_curtain(to - 1, false);
+            }
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -469,6 +496,20 @@ impl State {
         #[cfg(feature = "freezable_bottles")]
         {
             self.frozen |= mov.unfreeze_run;
+        }
+
+        #[cfg(feature = "curtains")]
+        if mov.lift_curtain_range != Bits::ZERO {
+            for i in 0..self.bottle_count {
+                if !mov.lift_curtain_range.has(usize::from(i)) {
+                    continue;
+                }
+                let Some((from, to)) = self.get_curtain_range(i) else {
+                    break;
+                };
+                self.set_curtain_range(i, from, to + 1);
+                self.set_behind_curtain(to, true);
+            }
         }
     }
 
@@ -652,17 +693,6 @@ impl State {
         self.bottle_plugged.set(usize::from(bottle), plugged);
     }
 
-    #[cfg(feature = "freezable_bottles")]
-    fn get_frozen_run(&self, bottle: u8) -> bool {
-        self.frozen_run.has(usize::from(bottle))
-    }
-
-    #[cfg(feature = "freezable_bottles")]
-    fn set_frozen_run(&mut self, bottle: u8, run: bool) {
-        debug_assert_ne!(bottle, 0);
-        self.frozen_run.set(usize::from(bottle), run);
-    }
-
     fn get_frozen(&self, bottle: u8) -> bool {
         #[cfg(feature = "freezable_bottles")]
         {
@@ -674,10 +704,118 @@ impl State {
         }
     }
 
-    #[cfg(feature = "freezable_bottles")]
-    fn set_frozen(&mut self, bottle: u8, frozen: bool) {
+    fn get_curtain_range(&self, index: u8) -> Option<(u8, u8)> {
+        #[cfg(feature = "curtains")]
+        {
+            let from = self
+                .curtain_range
+                .get_n(usize::from(index) * (BOTTLE_BITS + 1) * 2, BOTTLE_BITS + 1)
+                as u8;
+            let to = self.curtain_range.get_n(
+                usize::from(index) * (BOTTLE_BITS + 1) * 2 + BOTTLE_BITS + 1,
+                BOTTLE_BITS + 1,
+            ) as u8;
+            match (from, to) {
+                (0, 0) => None,
+                _ => Some((from, to)),
+            }
+        }
+        #[cfg(not(feature = "curtains"))]
+        {
+            None
+        }
+    }
+
+    #[cfg(feature = "curtains")]
+    fn set_curtain_range(&mut self, index: u8, from: u8, to: u8) {
+        self.curtain_range.set_n(
+            usize::from(index) * (BOTTLE_BITS + 1) * 2,
+            BOTTLE_BITS + 1,
+            u16::from(from),
+        );
+        self.curtain_range.set_n(
+            usize::from(index) * (BOTTLE_BITS + 1) * 2 + BOTTLE_BITS + 1,
+            BOTTLE_BITS + 1,
+            u16::from(to),
+        );
+    }
+
+    fn get_behind_curtain(&self, bottle: u8) -> bool {
+        #[cfg(feature = "curtains")]
+        {
+            self.behind_curtain.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "curtains"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "curtains")]
+    fn set_behind_curtain(&mut self, bottle: u8, behind_curtain: bool) {
         debug_assert_ne!(bottle, 0);
-        self.frozen.set(usize::from(bottle), frozen);
+        self.behind_curtain.set(usize::from(bottle), behind_curtain);
+    }
+
+    fn compute_run(
+        &self,
+        ranges: &[(u8, u8)],
+    ) -> Result<
+        (
+            Bits<{ storage_bits(BOTTLE_COUNT) }>,
+            Bits<{ storage_bits(BOTTLE_COUNT) }>,
+        ),
+        Box<dyn Error>,
+    > {
+        if !ranges.is_sorted() {
+            return Err("bottle ranges not sorted".into());
+        }
+
+        for ((_, to_a), (from_b, _)) in ranges.iter().copied().zip(ranges.iter().copied().skip(1)) {
+            if to_a > from_b {
+                return Err("bottle ranges overlapping".into());
+            }
+        }
+
+        for (from, to) in ranges.iter().copied() {
+            if from >= to {
+                return Err("invalid bottle range".into());
+            }
+
+            if from > self.bottle_count || to > self.bottle_count {
+                return Err("bottle range too large".into());
+            }
+        }
+
+        let mut run = Bits::ZERO;
+        let mut set = Bits::ZERO;
+        let mut current_bit = false;
+        let mut index = 1;
+
+        for (from, to) in ranges.iter().copied() {
+            let swap_bit = index < from + 1;
+            while index < from + 1 {
+                run.set(usize::from(index), current_bit);
+                index += 1;
+            }
+            if swap_bit {
+                current_bit = !current_bit;
+            }
+
+            for _ in from + 1..to + 1 {
+                run.set(usize::from(index), current_bit);
+                set.set(usize::from(index), true);
+                index += 1;
+            }
+            current_bit = !current_bit;
+        }
+
+        while index < self.bottle_count + 1 {
+            run.set(usize::from(index), current_bit);
+            index += 1;
+        }
+
+        Ok((run, set))
     }
 
     fn bottle_run(
@@ -813,55 +951,14 @@ impl TryFrom<&StateData> for State {
 
         #[cfg(feature = "freezable_bottles")]
         {
-            if !value.frozen_bottle_ranges.is_sorted() {
-                return Err("freezable bottles not sorted".into());
-            }
+            (state.frozen_run, state.frozen) = state.compute_run(&value.frozen_bottle_ranges)?;
+        }
 
-            for ((_, to_a), (from_b, _)) in value
-                .frozen_bottle_ranges
-                .iter()
-                .copied()
-                .zip(value.frozen_bottle_ranges.iter().copied().skip(1))
-            {
-                if to_a > from_b {
-                    return Err("freezable bottles ranges overlapping".into());
-                }
-            }
-
-            for (from, to) in value.frozen_bottle_ranges.iter().copied() {
-                if from >= to {
-                    return Err("freezable bottle invalid range".into());
-                }
-
-                if from > state.bottle_count || to > state.bottle_count {
-                    return Err("freezable bottle from or to not in range".into());
-                }
-            }
-
-            let mut current_bit = false;
-            let mut index = 1;
-
-            for (from, to) in value.frozen_bottle_ranges.iter().copied() {
-                let swap_bit = index < from + 1;
-                while index < from + 1 {
-                    state.set_frozen_run(index, current_bit);
-                    index += 1;
-                }
-                if swap_bit {
-                    current_bit = !current_bit;
-                }
-
-                for _ in from + 1..to + 1 {
-                    state.set_frozen_run(index, current_bit);
-                    state.set_frozen(index, true);
-                    index += 1;
-                }
-                current_bit = !current_bit;
-            }
-
-            while index < state.bottle_count + 1 {
-                state.set_frozen_run(index, current_bit);
-                index += 1;
+        #[cfg(feature = "curtains")]
+        {
+            (_, state.behind_curtain) = state.compute_run(&value.curtain_ranges)?;
+            for (index, (from, to)) in value.curtain_ranges.iter().copied().enumerate() {
+                state.set_curtain_range(u8::try_from(index).unwrap(), from + 1, to + 1);
             }
         }
 
@@ -916,7 +1013,7 @@ struct Move {
     #[cfg(feature = "freezable_bottles")]
     unfreeze_run: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "curtains")]
-    lift_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    lift_curtain_range: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "safes")]
     decrement_safe_counters: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "lock_groups")]
@@ -952,6 +1049,10 @@ struct StateData {
     #[cfg(feature = "freezable_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     frozen_bottle_ranges: Vec<(u8, u8)>,
+
+    #[cfg(feature = "curtains")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    curtain_ranges: Vec<(u8, u8)>,
 }
 
 // TODO:
@@ -974,6 +1075,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         immovable_bottles: vec![],
         pluggable_bottles: vec![],
         frozen_bottle_ranges: vec![],
+        curtain_ranges: vec![],
     })?;
 
     println!("{}", state.search(11));
