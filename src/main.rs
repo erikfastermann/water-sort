@@ -296,6 +296,7 @@ impl State {
 
                 let from_top_color = self.get_color(from, from_height.saturating_sub(1));
                 let to_top_color = self.get_color(to, to_height.saturating_sub(1));
+                let to_bottle_color = self.get_bottle_color(to);
 
                 let to_top_item_locked = self.get_item_locked(to, to_height.saturating_sub(1));
 
@@ -308,6 +309,7 @@ impl State {
                     | self.get_behind_curtain(to)
                     | (self.get_safe_counter(to) != 0)
                     | self.get_bottle_locked(to)
+                    | (to_bottle_color != 0 && to_bottle_color != from_top_color)
                 {
                     continue;
                 }
@@ -900,6 +902,28 @@ impl State {
         }
     }
 
+    fn get_bottle_color(&self, bottle: u8) -> u8 {
+        #[cfg(feature = "colored_bottles")]
+        {
+            self.bottle_color
+                .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
+        }
+        #[cfg(not(feature = "colored_bottles"))]
+        {
+            0
+        }
+    }
+
+    #[cfg(feature = "colored_bottles")]
+    fn set_bottle_color(&mut self, bottle: u8, color: u8) {
+        debug_assert_ne!(bottle, 0);
+        self.bottle_color.set_n(
+            usize::from(bottle) * COLOR_BITS,
+            COLOR_BITS,
+            u16::from(color),
+        );
+    }
+
     fn compute_run(
         &self,
         ranges: &[(u8, u8)],
@@ -1176,6 +1200,18 @@ impl TryFrom<&StateData> for State {
             }
         }
 
+        #[cfg(feature = "colored_bottles")]
+        for (bottle, color) in value.colored_bottles.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("colored bottle not in range".into());
+            }
+            if color == 0 || usize::from(color) >= COLOR_COUNT {
+                return Err("colored bottle color value not in range".into());
+            }
+            // TODO: Could check if the color appears at all.
+            state.set_bottle_color(bottle + 1, color);
+        }
+
         // TODO: Forbid solved bottles?
         for bottle in 1..state.bottle_count + 1 {
             if state.compute_bottle_finalized(bottle, 0, 0) {
@@ -1279,6 +1315,10 @@ struct StateData {
     #[cfg(feature = "lock_groups")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     lock_group_keys: Vec<(u8, u8)>,
+
+    #[cfg(feature = "colored_bottles")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    colored_bottles: Vec<(u8, u8)>,
 }
 
 // TODO:
@@ -1305,6 +1345,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         safes: vec![],
         lock_group_ranges: vec![],
         lock_group_keys: vec![],
+        colored_bottles: vec![],
     })?;
 
     println!("{}", state.search(11));
