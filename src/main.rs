@@ -197,11 +197,9 @@ struct State {
     // top of a bottle, the group is unlocked. When multiple items can be
     // poured at the same time, the key must always be the top item.
     #[cfg(feature = "lock_groups")]
-    lock_group: Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_BITS) }>,
+    item_has_key: Bits<{ storage_bits(BOTTLE_COUNT * ITEM_COUNT) }>,
     #[cfg(feature = "lock_groups")]
-    item_has_lock: Bits<{ storage_bits(ITEM_COUNT * BOTTLE_COUNT) }>,
-    #[cfg(feature = "lock_groups")]
-    group_key_location: Bits<{ storage_bits(BOTTLE_COUNT * (ITEM_BITS + BOTTLE_BITS)) }>,
+    bottle_key: Bits<{ storage_bits(BOTTLE_COUNT * (BOTTLE_BITS + ITEM_BITS)) }>,
     #[cfg(feature = "lock_groups")]
     bottle_locked: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 
@@ -281,11 +279,12 @@ impl State {
             debug_assert!(!self.get_item_hidden(from, from_height.saturating_sub(1)));
 
             if self.get_bottle_immovable(from)
-                || self.get_bottle_plugged(from)
-                || self.get_frozen(from)
-                || self.get_bottle_finalized(from)
-                || self.get_behind_curtain(from)
-                || self.get_safe_counter(from) != 0
+                | self.get_bottle_plugged(from)
+                | self.get_frozen(from)
+                | self.get_bottle_finalized(from)
+                | self.get_behind_curtain(from)
+                | (self.get_safe_counter(from) != 0)
+                | self.get_bottle_locked(from)
             {
                 continue;
             }
@@ -300,14 +299,15 @@ impl State {
 
                 let to_top_item_locked = self.get_item_locked(to, to_height.saturating_sub(1));
 
-                if from == to
-                    || from_height == 0
-                    || space == 0
-                    || (to_height > 0 && from_top_color != to_top_color)
-                    || (to_height > 0 && to_top_item_locked)
-                    || self.get_bottle_plugged(to)
-                    || self.get_behind_curtain(to)
-                    || self.get_safe_counter(to) != 0
+                if (from == to)
+                    | (from_height == 0)
+                    | (space == 0)
+                    | (to_height > 0 && from_top_color != to_top_color)
+                    | (to_height > 0 && to_top_item_locked)
+                    | self.get_bottle_plugged(to)
+                    | self.get_behind_curtain(to)
+                    | (self.get_safe_counter(to) != 0)
+                    | self.get_bottle_locked(to)
                 {
                     continue;
                 }
@@ -317,9 +317,7 @@ impl State {
                 let mut count = 1;
                 let mut include_next_item = !from_top_item_locked;
                 for i in (0..from_height - 1).rev() {
-                    include_next_item &= (self.get_color(from, i) == from_top_color)
-                        & !self.get_item_hidden(from, i)
-                        & !self.get_item_locked(from, i);
+                    include_next_item &= self.pour_include(from, i, from_top_color);
                     count += u8::from(include_next_item);
                 }
 
@@ -328,7 +326,7 @@ impl State {
                 let next_from_top_index = next_from_height.saturating_sub(1);
 
                 let show_item =
-                    if self.get_item_hidden(from, next_from_top_index) && next_from_height > 0 {
+                    if next_from_height > 0 && self.get_item_hidden(from, next_from_top_index) {
                         to_index(from, next_from_top_index)
                     } else {
                         0
@@ -348,6 +346,20 @@ impl State {
 
                 let to_finalized = self.compute_bottle_finalized(to, count, from_top_color);
                 let finalize_bottle = if to_finalized { to } else { 0 };
+
+                #[cfg(feature = "lock_groups")]
+                let (remove_key, unlock_bottle) =
+                    if next_from_height > 0 && self.get_item_has_key(from, next_from_top_index) {
+                        let key = to_index(from, next_from_top_index);
+                        let unlock_bottle =
+                            (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
+                                acc.set(usize::from(i), self.get_bottle_key(i) == key);
+                                acc
+                            });
+                        (key, unlock_bottle)
+                    } else {
+                        (0, Bits::ZERO)
+                    };
 
                 debug_assert!(index < buffer.len());
                 buffer[index % buffer.len()] = Move {
@@ -392,8 +404,10 @@ impl State {
                     } else {
                         Bits::ZERO
                     },
-                    remove_lock_group_key: 0,
-                    unlock_bottles: Bits::ZERO,
+                    #[cfg(feature = "lock_groups")]
+                    remove_key,
+                    #[cfg(feature = "lock_groups")]
+                    unlock_bottle,
                     lift_color_curtain: Bits::ZERO,
                 };
 
@@ -402,6 +416,12 @@ impl State {
         }
 
         index
+    }
+
+    fn pour_include(&self, bottle: u8, item: u8, color: u8) -> bool {
+        (self.get_color(bottle, item) == color)
+            & !self.get_item_hidden(bottle, item)
+            & !self.get_item_locked(bottle, item)
     }
 
     fn apply_move(&mut self, mov: Move) {
@@ -474,6 +494,13 @@ impl State {
                 self.set_safe_counter(i, new_counter);
             }
         }
+
+        #[cfg(feature = "lock_groups")]
+        if mov.remove_key != 0 {
+            let (bottle, item) = from_index(mov.remove_key);
+            self.set_item_has_key(bottle, item, false);
+            self.bottle_locked &= !mov.unlock_bottle;
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -541,6 +568,13 @@ impl State {
                     + u8::from(mov.decrement_safe_counter.has(usize::from(i)));
                 self.set_safe_counter(i, new_counter);
             }
+        }
+
+        #[cfg(feature = "lock_groups")]
+        if mov.remove_key != 0 {
+            let (bottle, item) = from_index(mov.remove_key);
+            self.set_item_has_key(bottle, item, true);
+            self.bottle_locked |= mov.unlock_bottle;
         }
     }
 
@@ -810,6 +844,62 @@ impl State {
         );
     }
 
+    fn get_item_has_key(&self, bottle: u8, item: u8) -> bool {
+        #[cfg(feature = "lock_groups")]
+        {
+            self.item_has_key
+                .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
+        }
+        #[cfg(not(feature = "lock_groups"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "lock_groups")]
+    fn set_item_has_key(&mut self, bottle: u8, item: u8, has_key: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.item_has_key.set(
+            usize::from(bottle) * ITEM_COUNT + usize::from(item),
+            has_key,
+        );
+    }
+
+    fn get_bottle_key(&self, bottle: u8) -> u16 {
+        #[cfg(feature = "lock_groups")]
+        {
+            self.bottle_key.get_n(
+                usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
+                BOTTLE_BITS + ITEM_BITS,
+            )
+        }
+        #[cfg(not(feature = "lock_groups"))]
+        {
+            0
+        }
+    }
+
+    #[cfg(feature = "lock_groups")]
+    fn set_bottle_key(&mut self, bottle: u8, key: u16) {
+        debug_assert_ne!(bottle, 0);
+        self.bottle_key.set_n(
+            usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
+            BOTTLE_BITS + ITEM_BITS,
+            key,
+        );
+    }
+
+    fn get_bottle_locked(&self, bottle: u8) -> bool {
+        #[cfg(feature = "lock_groups")]
+        {
+            self.bottle_locked.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "lock_groups"))]
+        {
+            false
+        }
+    }
+
     fn compute_run(
         &self,
         ranges: &[(u8, u8)],
@@ -1016,15 +1106,73 @@ impl TryFrom<&StateData> for State {
         }
 
         #[cfg(feature = "safes")]
+        for (bottle, counter) in value.safes.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("safe counter not in range".into());
+            }
+            if usize::from(counter) > MAX_SAFE_COUNTER {
+                return Err("safe counter value not in range".into());
+            }
+            state.set_safe_counter(bottle + 1, counter);
+        }
+
+        #[cfg(feature = "lock_groups")]
         {
-            for (bottle, counter) in value.safes.iter().copied() {
+            if value.lock_group_ranges.len() != value.lock_group_keys.len() {
+                return Err("number of lock group ranges and keys don't match".into());
+            }
+            (_, state.bottle_locked) = state.compute_run(&value.lock_group_ranges)?;
+
+            for ((bottle, item), (from, to)) in value
+                .lock_group_keys
+                .iter()
+                .copied()
+                .zip(value.lock_group_ranges.iter().copied())
+            {
                 if usize::from(bottle) >= value.content.len() {
-                    return Err("safe counter not in range".into());
+                    return Err("lock group key bottle not in range".into());
                 }
-                if usize::from(counter) > MAX_SAFE_COUNTER {
-                    return Err("safe counter value not in range".into());
+
+                if usize::from(item) >= value.content[usize::from(bottle)].len() {
+                    return Err("lock group key item not in range".into());
                 }
-                state.set_safe_counter(bottle + 1, counter);
+
+                if usize::from(item) == value.content[usize::from(bottle)].len() - 1 {
+                    return Err("lock group key should not start on top of a bottle".into());
+                }
+
+                let color = value.content[usize::from(bottle)][usize::from(item) + 1];
+                if state.pour_include(bottle + 1, item, color)
+                    && state.pour_include(bottle + 1, item + 1, color)
+                {
+                    return Err("lock group key must be the first item of a pour".into());
+                }
+
+                // TODO: Could check if lock groups contain loops.
+                if (from..to).contains(&bottle) {
+                    return Err("lock group key stored inside itself".into());
+                }
+
+                if state.get_item_has_key(bottle + 1, item) {
+                    return Err("lock group key duplicate".into());
+                }
+
+                state.set_item_has_key(bottle + 1, item, true);
+                let key = to_index(bottle + 1, item);
+                for i in from..to {
+                    state.set_bottle_key(i + 1, key);
+                }
+            }
+        }
+
+        for i in 1..state.bottle_count + 1 {
+            let feature_count = usize::from(state.get_behind_curtain(i))
+                + usize::from(state.get_safe_counter(i) != 0)
+                + usize::from(state.get_bottle_locked(i));
+            if feature_count > 1 {
+                return Err(
+                    "at most one of curtain, safe, or lock can be chosen per bottle".into(),
+                );
             }
         }
 
@@ -1083,9 +1231,9 @@ struct Move {
     #[cfg(feature = "safes")]
     decrement_safe_counter: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "lock_groups")]
-    remove_lock_group_key: u16,
+    remove_key: u16,
     #[cfg(feature = "lock_groups")]
-    unlock_bottles: Bits<{ storage_bits(BOTTLE_COUNT) }>,
+    unlock_bottle: Bits<{ storage_bits(BOTTLE_COUNT) }>,
     #[cfg(feature = "color_curtains")]
     lift_color_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 }
@@ -1123,6 +1271,14 @@ struct StateData {
     #[cfg(feature = "safes")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     safes: Vec<(u8, u8)>,
+
+    #[cfg(feature = "lock_groups")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    lock_group_ranges: Vec<(u8, u8)>,
+
+    #[cfg(feature = "lock_groups")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    lock_group_keys: Vec<(u8, u8)>,
 }
 
 // TODO:
@@ -1147,6 +1303,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         frozen_bottle_ranges: vec![],
         curtain_ranges: vec![],
         safes: vec![],
+        lock_group_ranges: vec![],
+        lock_group_keys: vec![],
     })?;
 
     println!("{}", state.search(11));
