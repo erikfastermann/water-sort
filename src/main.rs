@@ -119,6 +119,7 @@ const fn storage_bits(bits: usize) -> usize {
 /// Each color has exactly one bottle, so the count per color must be less than
 /// the maximum bottle size. At most one of the following can be chosen per
 /// bottle: curtain, safe, or lock.
+// TODO: Bottle with counter, refilled when empty with counter not zero.
 #[derive(Clone, Copy, Default)]
 struct State {
     /// Must be less than the maximum amount of bottles.
@@ -218,10 +219,6 @@ struct State {
     color_curtain_active: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 }
 
-// TODO:
-// Currently only the basic moves are implemented.
-// All other features are still missing.
-
 impl State {
     fn search(&mut self, depth: usize) -> isize {
         let mut buffers = vec![[Move::default(); BOTTLE_COUNT * BOTTLE_COUNT]; depth];
@@ -285,6 +282,7 @@ impl State {
                 | self.get_behind_curtain(from)
                 | (self.get_safe_counter(from) != 0)
                 | self.get_bottle_locked(from)
+                | self.get_color_curtain_active(from)
             {
                 continue;
             }
@@ -310,6 +308,7 @@ impl State {
                     | (self.get_safe_counter(to) != 0)
                     | self.get_bottle_locked(to)
                     | (to_bottle_color != 0 && to_bottle_color != from_top_color)
+                    | self.get_color_curtain_active(to)
                 {
                     continue;
                 }
@@ -410,7 +409,15 @@ impl State {
                     remove_key,
                     #[cfg(feature = "lock_groups")]
                     unlock_bottle,
-                    lift_color_curtain: Bits::ZERO,
+                    #[cfg(feature = "color_curtains")]
+                    lift_color_curtain: if to_finalized {
+                        (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
+                            acc.set(usize::from(i), self.get_color_curtain(i) == from_top_color);
+                            acc
+                        })
+                    } else {
+                        Bits::ZERO
+                    },
                 };
 
                 index += 1;
@@ -503,6 +510,11 @@ impl State {
             self.set_item_has_key(bottle, item, false);
             self.bottle_locked &= !mov.unlock_bottle;
         }
+
+        #[cfg(feature = "color_curtains")]
+        {
+            self.color_curtain_active &= !mov.lift_color_curtain;
+        }
     }
 
     fn undo_move(&mut self, mov: Move) {
@@ -577,6 +589,11 @@ impl State {
             let (bottle, item) = from_index(mov.remove_key);
             self.set_item_has_key(bottle, item, true);
             self.bottle_locked |= mov.unlock_bottle;
+        }
+
+        #[cfg(feature = "color_curtains")]
+        {
+            self.color_curtain_active |= mov.lift_color_curtain;
         }
     }
 
@@ -924,6 +941,45 @@ impl State {
         );
     }
 
+    fn get_color_curtain(&self, bottle: u8) -> u8 {
+        #[cfg(feature = "color_curtains")]
+        {
+            self.color_curtain
+                .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
+        }
+        #[cfg(not(feature = "color_curtains"))]
+        {
+            0
+        }
+    }
+
+    #[cfg(feature = "color_curtains")]
+    fn set_color_curtain(&mut self, bottle: u8, color: u8) {
+        debug_assert_ne!(bottle, 0);
+        self.color_curtain.set_n(
+            usize::from(bottle) * COLOR_BITS,
+            COLOR_BITS,
+            u16::from(color),
+        );
+    }
+
+    fn get_color_curtain_active(&self, bottle: u8) -> bool {
+        #[cfg(feature = "color_curtains")]
+        {
+            self.color_curtain_active.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "color_curtains"))]
+        {
+            false
+        }
+    }
+
+    #[cfg(feature = "color_curtains")]
+    fn set_color_curtain_active(&mut self, bottle: u8, active: bool) {
+        debug_assert_ne!(bottle, 0);
+        self.color_curtain_active.set(usize::from(bottle), active);
+    }
+
     fn compute_run(
         &self,
         ranges: &[(u8, u8)],
@@ -1015,10 +1071,10 @@ impl State {
     }
 }
 
-impl TryFrom<&StateData> for State {
+impl TryFrom<&StartingState> for State {
     type Error = Box<dyn Error>;
 
-    fn try_from(value: &StateData) -> Result<Self, Self::Error> {
+    fn try_from(value: &StartingState) -> Result<Self, Self::Error> {
         if value.content.len() >= BOTTLE_COUNT {
             return Err("too many bottles".into());
         }
@@ -1212,10 +1268,24 @@ impl TryFrom<&StateData> for State {
             state.set_bottle_color(bottle + 1, color);
         }
 
-        // TODO: Forbid solved bottles?
+        #[cfg(feature = "color_curtains")]
+        for (bottle, color) in value.color_curtains.iter().copied() {
+            if usize::from(bottle) >= value.content.len() {
+                return Err("color curtain not in range".into());
+            }
+            if color == 0 || usize::from(color) >= COLOR_COUNT {
+                return Err("color curtain value not in range".into());
+            }
+            // TODO:
+            // Could check if the color appears at all or if a curtain hides
+            // a color from itself.
+            state.set_color_curtain(bottle + 1, color);
+            state.set_color_curtain_active(bottle + 1, true);
+        }
+
         for bottle in 1..state.bottle_count + 1 {
             if state.compute_bottle_finalized(bottle, 0, 0) {
-                state.set_bottle_finalized(bottle, true);
+                return Err("finalized bottles not allowed".into());
             }
         }
 
@@ -1276,7 +1346,7 @@ struct Move {
 
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
-struct StateData {
+struct StartingState {
     content: Vec<Vec<u8>>,
     capacity: Vec<u8>,
 
@@ -1319,13 +1389,14 @@ struct StateData {
     #[cfg(feature = "colored_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     colored_bottles: Vec<(u8, u8)>,
+
+    #[cfg(feature = "color_curtains")]
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    color_curtains: Vec<(u8, u8)>,
 }
 
-// TODO:
-// - Bottle With Counter, Refilled When Empty With Counter Greater Than Zero
-
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut state = State::try_from(&StateData {
+    let mut state = State::try_from(&StartingState {
         content: vec![
             vec![1, 5, 4],
             vec![2, 2, 3, 1],
@@ -1346,6 +1417,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         lock_group_ranges: vec![],
         lock_group_keys: vec![],
         colored_bottles: vec![],
+        color_curtains: vec![],
     })?;
 
     println!("{}", state.search(11));
