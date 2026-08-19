@@ -82,7 +82,7 @@ height (probably as a total for all bottles, ut for individual
 bottles this could be even more powerful), boolean feature flags.
 */
 
-use std::{cmp::min, error::Error};
+use std::{cmp::min, env, error::Error, fs};
 
 use serde::{Deserialize, Serialize};
 
@@ -93,7 +93,9 @@ mod bits;
 const ITEM_BITS: usize = 4;
 const BOTTLE_BITS: usize = 5;
 const COLOR_BITS: usize = 4;
+#[cfg(feature = "safes")]
 const SAFE_COUNTER_BITS: usize = 3;
+const MAX_SEARCH_DEPTH: usize = 128;
 
 /// Need an extra bit for the height and capacity.
 const BOTTLE_SIZE_BITS: usize = ITEM_BITS + 1;
@@ -106,6 +108,7 @@ const BOTTLE_COUNT: usize = 1 << BOTTLE_BITS;
 /// The zero value is reserved.
 const COLOR_COUNT: usize = 1 << COLOR_BITS;
 
+#[cfg(feature = "safes")]
 const MAX_SAFE_COUNTER: usize = (1 << SAFE_COUNTER_BITS) - 1;
 
 const fn storage_bits(bits: usize) -> usize {
@@ -221,6 +224,7 @@ struct State {
 
 impl State {
     fn search(&mut self, depth: usize) -> isize {
+        assert!(depth <= MAX_SEARCH_DEPTH);
         let mut buffers = vec![[Move::default(); BOTTLE_COUNT * BOTTLE_COUNT]; depth];
         self.search_recursive(&mut buffers)
     }
@@ -323,27 +327,14 @@ impl State {
                 }
 
                 let count = min(count, space);
+                #[cfg(any(
+                    feature = "hidable_items",
+                    feature = "pluggable_bottles",
+                    feature = "lock_groups"
+                ))]
                 let next_from_height = from_height.saturating_sub(count);
+                #[cfg(any(feature = "hidable_items", feature = "lock_groups"))]
                 let next_from_top_index = next_from_height.saturating_sub(1);
-
-                let show_item =
-                    if next_from_height > 0 && self.get_item_hidden(from, next_from_top_index) {
-                        to_index(from, next_from_top_index)
-                    } else {
-                        0
-                    };
-
-                let unlock_item = if from_top_item_locked {
-                    to_index(from, from_height - 1)
-                } else {
-                    0
-                };
-
-                let unplug_bottle = if next_from_height == 0 && self.get_pluggable_bottle(from) {
-                    from
-                } else {
-                    0
-                };
 
                 let to_finalized = self.compute_bottle_finalized(to, count, from_top_color);
                 let finalize_bottle = if to_finalized { to } else { 0 };
@@ -369,12 +360,30 @@ impl State {
                     count,
                     color: from_top_color,
                     finalize_bottle,
+
                     #[cfg(feature = "hidable_items")]
-                    show_item,
+                    show_item: if next_from_height > 0
+                        && self.get_item_hidden(from, next_from_top_index)
+                    {
+                        to_index(from, next_from_top_index)
+                    } else {
+                        0
+                    },
+
                     #[cfg(feature = "lockable_items")]
-                    unlock_item,
+                    unlock_item: if from_top_item_locked {
+                        to_index(from, from_height - 1)
+                    } else {
+                        0
+                    },
+
                     #[cfg(feature = "pluggable_bottles")]
-                    unplug_bottle,
+                    unplug_bottle: if next_from_height == 0 && self.get_pluggable_bottle(from) {
+                        from
+                    } else {
+                        0
+                    },
+
                     #[cfg(feature = "freezable_bottles")]
                     unfreeze_run: if to_finalized && self.get_frozen(to) {
                         let run = self.bottle_run(self.frozen_run, to);
@@ -383,6 +392,7 @@ impl State {
                     } else {
                         Bits::ZERO
                     },
+
                     #[cfg(feature = "curtains")]
                     lift_curtain_range: if to_finalized {
                         (0..self.bottle_count).fold(Bits::ZERO, |mut acc, i| {
@@ -395,6 +405,7 @@ impl State {
                     } else {
                         Bits::ZERO
                     },
+
                     #[cfg(feature = "safes")]
                     decrement_safe_counter: if to_finalized {
                         (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
@@ -405,10 +416,12 @@ impl State {
                     } else {
                         Bits::ZERO
                     },
+
                     #[cfg(feature = "lock_groups")]
                     remove_key,
                     #[cfg(feature = "lock_groups")]
                     unlock_bottle,
+
                     #[cfg(feature = "color_curtains")]
                     lift_color_curtain: if to_finalized {
                         (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
@@ -696,6 +709,7 @@ impl State {
         }
         #[cfg(not(feature = "hidable_items"))]
         {
+            let _ = (bottle, item);
             false
         }
     }
@@ -715,6 +729,7 @@ impl State {
         }
         #[cfg(not(feature = "lockable_items"))]
         {
+            let _ = (bottle, item);
             false
         }
     }
@@ -733,6 +748,7 @@ impl State {
         }
         #[cfg(not(feature = "immovable_bottles"))]
         {
+            let _ = bottle;
             false
         }
     }
@@ -743,15 +759,9 @@ impl State {
         self.bottle_immovable.set(usize::from(bottle), immovable);
     }
 
+    #[cfg(feature = "pluggable_bottles")]
     fn get_pluggable_bottle(&self, bottle: u8) -> bool {
-        #[cfg(feature = "pluggable_bottles")]
-        {
-            self.pluggable_bottle.has(usize::from(bottle))
-        }
-        #[cfg(not(feature = "pluggable_bottles"))]
-        {
-            false
-        }
+        self.pluggable_bottle.has(usize::from(bottle))
     }
 
     #[cfg(feature = "pluggable_bottles")]
@@ -767,6 +777,7 @@ impl State {
         }
         #[cfg(not(feature = "pluggable_bottles"))]
         {
+            let _ = bottle;
             false
         }
     }
@@ -784,29 +795,24 @@ impl State {
         }
         #[cfg(not(feature = "freezable_bottles"))]
         {
+            let _ = bottle;
             false
         }
     }
 
+    #[cfg(feature = "curtains")]
     fn get_curtain_range(&self, index: u8) -> Option<(u8, u8)> {
-        #[cfg(feature = "curtains")]
-        {
-            let from = self
-                .curtain_range
-                .get_n(usize::from(index) * (BOTTLE_BITS + 1) * 2, BOTTLE_BITS + 1)
-                as u8;
-            let to = self.curtain_range.get_n(
-                usize::from(index) * (BOTTLE_BITS + 1) * 2 + BOTTLE_BITS + 1,
-                BOTTLE_BITS + 1,
-            ) as u8;
-            match (from, to) {
-                (0, 0) => None,
-                _ => Some((from, to)),
-            }
-        }
-        #[cfg(not(feature = "curtains"))]
-        {
-            None
+        let from = self
+            .curtain_range
+            .get_n(usize::from(index) * (BOTTLE_BITS + 1) * 2, BOTTLE_BITS + 1)
+            as u8;
+        let to = self.curtain_range.get_n(
+            usize::from(index) * (BOTTLE_BITS + 1) * 2 + BOTTLE_BITS + 1,
+            BOTTLE_BITS + 1,
+        ) as u8;
+        match (from, to) {
+            (0, 0) => None,
+            _ => Some((from, to)),
         }
     }
 
@@ -831,6 +837,7 @@ impl State {
         }
         #[cfg(not(feature = "curtains"))]
         {
+            let _ = bottle;
             false
         }
     }
@@ -849,6 +856,7 @@ impl State {
         }
         #[cfg(not(feature = "safes"))]
         {
+            let _ = bottle;
             0
         }
     }
@@ -863,16 +871,10 @@ impl State {
         );
     }
 
+    #[cfg(feature = "lock_groups")]
     fn get_item_has_key(&self, bottle: u8, item: u8) -> bool {
-        #[cfg(feature = "lock_groups")]
-        {
-            self.item_has_key
-                .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
-        }
-        #[cfg(not(feature = "lock_groups"))]
-        {
-            false
-        }
+        self.item_has_key
+            .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
     }
 
     #[cfg(feature = "lock_groups")]
@@ -884,18 +886,12 @@ impl State {
         );
     }
 
+    #[cfg(feature = "lock_groups")]
     fn get_bottle_key(&self, bottle: u8) -> u16 {
-        #[cfg(feature = "lock_groups")]
-        {
-            self.bottle_key.get_n(
-                usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
-                BOTTLE_BITS + ITEM_BITS,
-            )
-        }
-        #[cfg(not(feature = "lock_groups"))]
-        {
-            0
-        }
+        self.bottle_key.get_n(
+            usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
+            BOTTLE_BITS + ITEM_BITS,
+        )
     }
 
     #[cfg(feature = "lock_groups")]
@@ -915,6 +911,7 @@ impl State {
         }
         #[cfg(not(feature = "lock_groups"))]
         {
+            let _ = bottle;
             false
         }
     }
@@ -927,6 +924,7 @@ impl State {
         }
         #[cfg(not(feature = "colored_bottles"))]
         {
+            let _ = bottle;
             0
         }
     }
@@ -941,16 +939,10 @@ impl State {
         );
     }
 
+    #[cfg(feature = "color_curtains")]
     fn get_color_curtain(&self, bottle: u8) -> u8 {
-        #[cfg(feature = "color_curtains")]
-        {
-            self.color_curtain
-                .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
-        }
-        #[cfg(not(feature = "color_curtains"))]
-        {
-            0
-        }
+        self.color_curtain
+            .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
     }
 
     #[cfg(feature = "color_curtains")]
@@ -970,6 +962,7 @@ impl State {
         }
         #[cfg(not(feature = "color_curtains"))]
         {
+            let _ = bottle;
             false
         }
     }
@@ -980,6 +973,11 @@ impl State {
         self.color_curtain_active.set(usize::from(bottle), active);
     }
 
+    #[cfg(any(
+        feature = "freezable_bottles",
+        feature = "curtains",
+        feature = "lock_groups"
+    ))]
     fn compute_run(
         &self,
         ranges: &[(u8, u8)],
@@ -1041,6 +1039,7 @@ impl State {
         Ok((run, set))
     }
 
+    #[cfg(feature = "freezable_bottles")]
     fn bottle_run(
         &self,
         b: Bits<{ storage_bits(BOTTLE_COUNT) }>,
@@ -1293,6 +1292,11 @@ impl TryFrom<&StartingState> for State {
     }
 }
 
+#[cfg(any(
+    feature = "hidable_items",
+    feature = "lockable_items",
+    feature = "lock_groups"
+))]
 fn from_index(index: u16) -> (u8, u8) {
     debug_assert!(
         usize::try_from(index)
@@ -1306,6 +1310,11 @@ fn from_index(index: u16) -> (u8, u8) {
     (bottle as u8, item as u8)
 }
 
+#[cfg(any(
+    feature = "hidable_items",
+    feature = "lockable_items",
+    feature = "lock_groups"
+))]
 fn to_index(bottle: u8, item: u8) -> u16 {
     debug_assert!(u16::try_from(ITEM_COUNT).is_ok());
     debug_assert!(usize::from(bottle) < BOTTLE_COUNT);
@@ -1396,30 +1405,20 @@ struct StartingState {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
-    let mut state = State::try_from(&StartingState {
-        content: vec![
-            vec![1, 5, 4],
-            vec![2, 2, 3, 1],
-            vec![3, 3, 1, 5],
-            vec![4, 4, 4],
-            vec![5, 5],
-            vec![6, 6, 3, 1],
-            vec![2, 6, 6, 2],
-        ],
-        capacity: vec![4; 7],
-        hidden_items: vec![],
-        locked_items: vec![],
-        immovable_bottles: vec![],
-        pluggable_bottles: vec![],
-        frozen_bottle_ranges: vec![],
-        curtain_ranges: vec![],
-        safes: vec![],
-        lock_group_ranges: vec![],
-        lock_group_keys: vec![],
-        colored_bottles: vec![],
-        color_curtains: vec![],
-    })?;
+    let args: Vec<_> = env::args().collect();
+    if args.len() != 3 {
+        return Err("USAGE: solver PUZZLE_PATH DEPTH".into());
+    }
 
-    println!("{}", state.search(11));
+    let depth: usize = args[2].parse()?;
+    if depth > MAX_SEARCH_DEPTH {
+        return Err("search depth too large".into());
+    }
+
+    let starting_state_raw = fs::read_to_string(&args[1])?;
+    let starting_state: StartingState = serde_json::from_str(&starting_state_raw)?;
+
+    let mut state = State::try_from(&starting_state)?;
+    println!("{}", state.search(depth));
     Ok(())
 }
