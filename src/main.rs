@@ -82,7 +82,13 @@ height (probably as a total for all bottles, ut for individual
 bottles this could be even more powerful), boolean feature flags.
 */
 
-use std::{cmp::min, env, error::Error, fs};
+use std::{
+    cmp::min,
+    env,
+    error::Error,
+    fs,
+    hash::{DefaultHasher, Hash, Hasher},
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -95,7 +101,6 @@ const BOTTLE_BITS: usize = 5;
 const COLOR_BITS: usize = 4;
 #[cfg(feature = "safes")]
 const SAFE_COUNTER_BITS: usize = 3;
-const MAX_SEARCH_DEPTH: usize = 128;
 
 /// Need an extra bit for the height and capacity.
 const BOTTLE_SIZE_BITS: usize = ITEM_BITS + 1;
@@ -111,6 +116,8 @@ const COLOR_COUNT: usize = 1 << COLOR_BITS;
 #[cfg(feature = "safes")]
 const MAX_SAFE_COUNTER: usize = (1 << SAFE_COUNTER_BITS) - 1;
 
+const MAX_SEARCH_DEPTH: i8 = i8::MAX - 1;
+
 const fn storage_bits(bits: usize) -> usize {
     assert!(bits <= 4096);
     let bits = bits.next_power_of_two();
@@ -123,7 +130,7 @@ const fn storage_bits(bits: usize) -> usize {
 /// the maximum bottle size. At most one of the following can be chosen per
 /// bottle: curtain, safe, or lock.
 // TODO: Bottle with counter, refilled when empty with counter not zero.
-#[derive(Clone, Copy, Default)]
+#[derive(Clone, Copy, Default, Hash)]
 struct State {
     /// Must be less than the maximum amount of bottles.
     bottle_count: u8,
@@ -223,43 +230,6 @@ struct State {
 }
 
 impl State {
-    fn search(&mut self, depth: usize) -> isize {
-        assert!(depth <= MAX_SEARCH_DEPTH);
-        let mut buffers = vec![[Move::default(); BOTTLE_COUNT * BOTTLE_COUNT]; depth];
-        self.search_recursive(&mut buffers)
-    }
-
-    fn search_recursive(&mut self, buffers: &mut [[Move; BOTTLE_COUNT * BOTTLE_COUNT]]) -> isize {
-        if self.solved() {
-            return 0;
-        }
-        if buffers.is_empty() {
-            return -1;
-        }
-
-        let (buffers, next_buffers) = buffers.split_at_mut(1);
-        let buffer = &mut buffers[0];
-
-        let move_count = self.fill_moves(buffer);
-        let moves = &buffer[..move_count];
-
-        if moves.is_empty() {
-            return -1;
-        }
-
-        for mov in moves.iter().copied() {
-            self.apply_move(mov);
-            let result = self.search_recursive(next_buffers);
-            self.undo_move(mov);
-
-            if result >= 0 {
-                return result.checked_add(1).unwrap();
-            }
-        }
-
-        -1
-    }
-
     fn solved(&self) -> bool {
         for bottle in 1..self.bottle_count + 1 {
             if self.get_height(bottle) != 0 && !self.get_bottle_finalized(bottle) {
@@ -1325,6 +1295,7 @@ fn to_index(bottle: u8, item: u8) -> u16 {
 /// Collect all changes to apply a move, which can be undone.
 // All optional item indices use the zero value, which is possible because the
 // zero bottle index is reserved.
+// TODO: Having Default on Move is not great, as that is always invalid.
 #[derive(Clone, Copy, Default)]
 struct Move {
     from_bottle: u8,
@@ -1404,21 +1375,174 @@ struct StartingState {
     color_curtains: Vec<(u8, u8)>,
 }
 
+struct Searcher {
+    state: State,
+    depth: i8,
+    visited: Vec<i8>,
+}
+
+impl Searcher {
+    fn new(state: State, depth: i8, visited_size: usize) -> Result<Self, Box<dyn Error>> {
+        if depth < 0 || depth > MAX_SEARCH_DEPTH {
+            return Err("invalid depth".into());
+        }
+
+        if visited_size < 1_000_000
+            || visited_size > usize::try_from(u32::MAX).unwrap()
+            || !visited_size.is_power_of_two()
+        {
+            return Err("invalid visited size".into());
+        }
+
+        Ok(Self {
+            state,
+            depth,
+            visited: vec![0; visited_size],
+        })
+    }
+
+    fn search(mut self) -> i8 {
+        let mut buffers = vec![
+            [Move::default(); BOTTLE_COUNT * BOTTLE_COUNT];
+            usize::try_from(self.depth).unwrap()
+        ];
+        let result = self.search_recursive(&mut buffers);
+        if result < 0 {
+            -1
+        } else {
+            assert_ne!(result, 0);
+            result - 1
+        }
+    }
+
+    fn search_recursive(&mut self, buffers: &mut [[Move; BOTTLE_COUNT * BOTTLE_COUNT]]) -> i8 {
+        let remaining_depth = buffers.len() as i8;
+        let error_marker = -remaining_depth - 1;
+
+        // TODO: Skip calculating the hash on leaf nodes?
+        let hash = self.hash_state();
+        let visited = self.get_visited(hash);
+        if visited != 0 {
+            // This can give false negatives, which might prune useful search
+            // states. We can make this less likely by adding a u8 of the upper
+            // bits of the hash, but the problem can't be avoided completely.
+
+            // TODO:
+            // This can give false positives, but this should only be relevant
+            // when searching for the best move and not ending the search on
+            // the first solution found.
+
+            if visited == i8::MIN {
+                return i8::MIN;
+            } else if visited < 0 {
+                if -(visited + 1) >= remaining_depth {
+                    return visited;
+                }
+                // Otherwise we need to check again.
+            } else {
+                if visited - 1 <= remaining_depth {
+                    return visited;
+                } else {
+                    return error_marker;
+                }
+            }
+        }
+
+        if self.state.solved() {
+            self.set_visited(hash, 1);
+            return 1;
+        }
+
+        if buffers.is_empty() {
+            self.set_visited(hash, error_marker);
+            return error_marker;
+        }
+
+        let (moves, next_buffer) = buffers.split_at_mut(1);
+        let move_count = self.state.fill_moves(&mut moves[0]);
+        let moves = &mut moves[0][..move_count];
+
+        if moves.is_empty() {
+            self.set_visited(hash, i8::MIN);
+            return i8::MIN;
+        }
+
+        self.set_visited(hash, error_marker);
+        let mut all_failed = true;
+
+        for mov in moves.iter().copied() {
+            self.state.apply_move(mov);
+            let result = self.search_recursive(next_buffer);
+            self.state.undo_move(mov);
+
+            all_failed &= result == i8::MIN;
+            if result > 0 {
+                self.set_visited(hash, result + 1);
+                return result + 1;
+            }
+        }
+
+        let error_marker = if all_failed { i8::MIN } else { error_marker };
+        self.set_visited(hash, error_marker);
+        error_marker
+    }
+
+    fn hash_state(&self) -> u64 {
+        // Hash collision attacks should not be a problem in our use case. Only
+        // hash the fields which can actually change.
+        let mut s = DefaultHasher::new();
+        self.state.content.hash(&mut s);
+        self.state.height.hash(&mut s);
+        self.state.bottle_finalized.hash(&mut s);
+        #[cfg(feature = "hidable_items")]
+        self.state.item_hidden.hash(&mut s);
+        #[cfg(feature = "lockable_items")]
+        self.state.item_locked.hash(&mut s);
+        #[cfg(feature = "freezable_bottles")]
+        self.state.frozen.hash(&mut s);
+        #[cfg(feature = "pluggable_bottles")]
+        self.state.pluggable_bottle.hash(&mut s);
+        #[cfg(feature = "pluggable_bottles")]
+        self.state.bottle_plugged.hash(&mut s);
+        #[cfg(feature = "curtains")]
+        self.state.curtain_range.hash(&mut s);
+        #[cfg(feature = "curtains")]
+        self.state.behind_curtain.hash(&mut s);
+        #[cfg(feature = "safes")]
+        self.state.safe_counter.hash(&mut s);
+        #[cfg(feature = "lock_groups")]
+        self.state.item_has_key.hash(&mut s);
+        #[cfg(feature = "lock_groups")]
+        self.state.bottle_locked.hash(&mut s);
+        #[cfg(feature = "color_curtains")]
+        self.state.color_curtain_active.hash(&mut s);
+        s.finish()
+    }
+
+    fn get_visited(&self, hash: u64) -> i8 {
+        self.visited[hash as usize & (self.visited.len() - 1)]
+    }
+
+    fn set_visited(&mut self, hash: u64, value: i8) {
+        let visited_len = self.visited.len();
+        self.visited[hash as usize & (visited_len - 1)] = value;
+    }
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args: Vec<_> = env::args().collect();
     if args.len() != 3 {
         return Err("USAGE: solver PUZZLE_PATH DEPTH".into());
     }
 
-    let depth: usize = args[2].parse()?;
-    if depth > MAX_SEARCH_DEPTH {
-        return Err("search depth too large".into());
-    }
-
+    let depth: i8 = args[2].parse()?;
     let starting_state_raw = fs::read_to_string(&args[1])?;
     let starting_state: StartingState = serde_json::from_str(&starting_state_raw)?;
 
-    let mut state = State::try_from(&starting_state)?;
-    println!("{}", state.search(depth));
+    let state = State::try_from(&starting_state)?;
+    // TODO: Get visited_size from the commandline.
+    let searcher = Searcher::new(state, depth, 2 * 1024 * 1024 * 1024)?;
+    println!("{:?}", searcher.search());
+
     Ok(())
 }

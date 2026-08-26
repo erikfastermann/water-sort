@@ -1,10 +1,11 @@
 use std::{
     fmt::Debug,
+    hash::Hash,
     ops::{BitAnd, BitAndAssign, BitOrAssign, Not},
 };
 
 // TODO: Proper Debug.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Bits<const BITS: usize>
 where
     StorageMapping<BITS>: StorageMapper,
@@ -126,7 +127,7 @@ impl StorageMapper for StorageMapping<4096> {
     type Storage = [u32; 128];
 }
 
-pub trait Storage: Debug + Clone + Copy + PartialEq + Eq {
+pub trait Storage: Debug + Clone + Copy + PartialEq + Eq + Hash {
     const ZERO: Self;
 
     fn has(&self, index: usize) -> bool;
