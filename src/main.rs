@@ -116,7 +116,7 @@ const COLOR_COUNT: usize = 1 << COLOR_BITS;
 #[cfg(feature = "safes")]
 const MAX_SAFE_COUNTER: usize = (1 << SAFE_COUNTER_BITS) - 1;
 
-const MAX_SEARCH_DEPTH: i8 = i8::MAX - 1;
+const MAX_SEARCH_DEPTH: i8 = 125;
 
 const fn storage_bits(bits: usize) -> usize {
     assert!(bits <= 4096);
@@ -1378,18 +1378,24 @@ struct StartingState {
 struct Searcher {
     state: State,
     depth: i8,
-    visited: Vec<i8>,
+    visited: Vec<u32>,
+    find_first: bool,
 }
 
 impl Searcher {
-    fn new(state: State, depth: i8, visited_size: usize) -> Result<Self, Box<dyn Error>> {
+    fn new(
+        state: State,
+        depth: i8,
+        visited_bytes: usize,
+        find_first: bool,
+    ) -> Result<Self, Box<dyn Error>> {
         if depth < 0 || depth > MAX_SEARCH_DEPTH {
             return Err("invalid depth".into());
         }
 
-        if visited_size < 1_000_000
-            || visited_size > usize::try_from(u32::MAX).unwrap()
-            || !visited_size.is_power_of_two()
+        if visited_bytes < 1_000_000
+            || visited_bytes > 0xff_ff_ff_ff_ff
+            || !visited_bytes.is_power_of_two()
         {
             return Err("invalid visited size".into());
         }
@@ -1397,7 +1403,8 @@ impl Searcher {
         Ok(Self {
             state,
             depth,
-            visited: vec![0; visited_size],
+            visited: vec![0; visited_bytes / 4],
+            find_first,
         })
     }
 
@@ -1424,13 +1431,8 @@ impl Searcher {
         let visited = self.get_visited(hash);
         if visited != 0 {
             // This can give false negatives, which might prune useful search
-            // states. We can make this less likely by adding a u8 of the upper
-            // bits of the hash, but the problem can't be avoided completely.
-
-            // TODO:
-            // This can give false positives, but this should only be relevant
-            // when searching for the best move and not ending the search on
-            // the first solution found.
+            // states. This can also give false positives, which might return a
+            // shorter solution than what is actually possible.
 
             if visited == i8::MIN {
                 return i8::MIN;
@@ -1441,6 +1443,8 @@ impl Searcher {
                 // Otherwise we need to check again.
             } else {
                 if visited - 1 <= remaining_depth {
+                    // We exhaustively searched this state before and know this
+                    // is the true optimum.
                     return visited;
                 } else {
                     return error_marker;
@@ -1469,6 +1473,7 @@ impl Searcher {
 
         self.set_visited(hash, error_marker);
         let mut all_failed = true;
+        let mut best_value = i8::MAX;
 
         for mov in moves.iter().copied() {
             self.state.apply_move(mov);
@@ -1477,14 +1482,21 @@ impl Searcher {
 
             all_failed &= result == i8::MIN;
             if result > 0 {
-                self.set_visited(hash, result + 1);
-                return result + 1;
+                best_value = min(best_value, result + 1);
+                if self.find_first {
+                    self.set_visited(hash, best_value);
+                    return best_value;
+                }
             }
         }
 
-        let error_marker = if all_failed { i8::MIN } else { error_marker };
-        self.set_visited(hash, error_marker);
-        error_marker
+        let return_value = if best_value == i8::MAX {
+            if all_failed { i8::MIN } else { error_marker }
+        } else {
+            best_value
+        };
+        self.set_visited(hash, return_value);
+        return_value
     }
 
     fn hash_state(&self) -> u64 {
@@ -1520,12 +1532,18 @@ impl Searcher {
     }
 
     fn get_visited(&self, hash: u64) -> i8 {
-        self.visited[hash as usize & (self.visited.len() - 1)]
+        let stored = self.visited[hash as usize & (self.visited.len() - 1)];
+        if (hash >> 40) as u32 == (stored >> 8) {
+            stored as u8 as i8
+        } else {
+            0
+        }
     }
 
     fn set_visited(&mut self, hash: u64, value: i8) {
         let visited_len = self.visited.len();
-        self.visited[hash as usize & (visited_len - 1)] = value;
+        let stored = ((hash >> 40) << 8) as u32 | value as u8 as u32;
+        self.visited[hash as usize & (visited_len - 1)] = stored;
     }
 }
 
@@ -1540,8 +1558,8 @@ fn main() -> Result<(), Box<dyn Error>> {
     let starting_state: StartingState = serde_json::from_str(&starting_state_raw)?;
 
     let state = State::try_from(&starting_state)?;
-    // TODO: Get visited_size from the commandline.
-    let searcher = Searcher::new(state, depth, 2 * 1024 * 1024 * 1024)?;
+    // TODO: Get visited_bytes and find_first from the commandline.
+    let searcher = Searcher::new(state, depth, 8 * 1024 * 1024 * 1024, false)?;
     println!("{:?}", searcher.search());
 
     Ok(())
