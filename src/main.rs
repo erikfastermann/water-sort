@@ -8,6 +8,8 @@ use crate::{
 };
 
 mod bits;
+mod layout;
+mod level;
 mod search;
 mod state;
 

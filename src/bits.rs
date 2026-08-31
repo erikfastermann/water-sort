@@ -87,6 +87,10 @@ where
     pub fn set_n(&mut self, offset: usize, bits: usize, value: u16) {
         self.v.set_n(offset, bits, value);
     }
+
+    pub fn count(&self) -> u32 {
+        self.v.count()
+    }
 }
 
 pub trait StorageMapper {
@@ -134,6 +138,7 @@ pub trait Storage: Debug + Clone + Copy + PartialEq + Eq + Hash {
     fn set(&mut self, index: usize, value: bool);
     fn get_n(&self, offset: usize, bits: usize) -> u16;
     fn set_n(&mut self, offset: usize, bits: usize, value: u16);
+    fn count(&self) -> u32;
 
     fn bitand(self, rhs: Self) -> Self;
     fn bitand_assign(&mut self, rhs: Self);
@@ -193,6 +198,10 @@ impl<const N: usize> Storage for [u32; N] {
             self.set(offset + i, v & 1 != 0);
             v >>= 1;
         }
+    }
+
+    fn count(&self) -> u32 {
+        self.iter().map(|n| n.count_ones()).sum()
     }
 
     fn bitand(mut self, rhs: Self) -> Self {

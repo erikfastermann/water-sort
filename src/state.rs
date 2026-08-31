@@ -1,3 +1,5 @@
+#[cfg(feature = "freezable_bottles")]
+use std::range::RangeInclusive;
 use std::{cmp::min, error::Error};
 
 use serde::{Deserialize, Serialize};
@@ -262,7 +264,7 @@ impl State {
 
                     #[cfg(feature = "freezable_bottles")]
                     unfreeze_run: if to_finalized && self.get_frozen(to) {
-                        let run = self.bottle_run(self.frozen_run, to);
+                        let (run, _) = self.bottle_run(self.frozen_run, to);
                         debug_assert_eq!(run & self.frozen, run);
                         run
                     } else {
@@ -500,7 +502,7 @@ impl State {
         );
     }
 
-    fn get_capacity(&self, bottle: u8) -> u8 {
+    pub(crate) fn get_capacity(&self, bottle: u8) -> u8 {
         self.capacity
             .get_n(usize::from(bottle) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
     }
@@ -664,7 +666,7 @@ impl State {
         self.bottle_plugged.set(usize::from(bottle), plugged);
     }
 
-    fn get_frozen(&self, bottle: u8) -> bool {
+    pub(crate) fn get_frozen(&self, bottle: u8) -> bool {
         #[cfg(feature = "freezable_bottles")]
         {
             self.frozen.has(usize::from(bottle))
@@ -677,7 +679,7 @@ impl State {
     }
 
     #[cfg(feature = "curtains")]
-    fn get_curtain_range(&self, index: u8) -> Option<(u8, u8)> {
+    pub(crate) fn get_curtain_range(&self, index: u8) -> Option<(u8, u8)> {
         let from = self
             .curtain_range
             .get_n(usize::from(index) * (BOTTLE_BITS + 1) * 2, BOTTLE_BITS + 1)
@@ -706,7 +708,7 @@ impl State {
         );
     }
 
-    fn get_behind_curtain(&self, bottle: u8) -> bool {
+    pub(crate) fn get_behind_curtain(&self, bottle: u8) -> bool {
         #[cfg(feature = "curtains")]
         {
             self.behind_curtain.has(usize::from(bottle))
@@ -763,7 +765,7 @@ impl State {
     }
 
     #[cfg(feature = "lock_groups")]
-    fn get_bottle_key(&self, bottle: u8) -> u16 {
+    pub(crate) fn get_bottle_key(&self, bottle: u8) -> u16 {
         self.bottle_key.get_n(
             usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
             BOTTLE_BITS + ITEM_BITS,
@@ -780,7 +782,7 @@ impl State {
         );
     }
 
-    fn get_bottle_locked(&self, bottle: u8) -> bool {
+    pub(crate) fn get_bottle_locked(&self, bottle: u8) -> bool {
         #[cfg(feature = "lock_groups")]
         {
             self.bottle_locked.has(usize::from(bottle))
@@ -916,15 +918,17 @@ impl State {
     }
 
     #[cfg(feature = "freezable_bottles")]
-    fn bottle_run(
+    pub(crate) fn bottle_run(
         &self,
         b: Bits<{ storage_bits(BOTTLE_COUNT) }>,
         bottle: u8,
-    ) -> Bits<{ storage_bits(BOTTLE_COUNT) }> {
+    ) -> (Bits<{ storage_bits(BOTTLE_COUNT) }>, RangeInclusive<u8>) {
         // TODO: Could use some faster bit magic.
 
         debug_assert_ne!(bottle, 0);
         let mut out = Bits::ZERO;
+        let mut start = bottle;
+        let mut end = bottle;
         out.set(usize::from(bottle), true);
         let offset_set = b.has(usize::from(bottle));
 
@@ -933,6 +937,7 @@ impl State {
                 break;
             }
             out.set(usize::from(i), true);
+            start = i;
         }
 
         for i in bottle + 1..self.bottle_count + 1 {
@@ -940,9 +945,10 @@ impl State {
                 break;
             }
             out.set(usize::from(i), true);
+            end = i;
         }
 
-        out
+        (out, (start..=end).into())
     }
 }
 
