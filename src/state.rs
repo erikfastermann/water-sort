@@ -6,11 +6,14 @@ use serde::{Deserialize, Serialize};
 
 use crate::bits::Bits;
 
-pub(crate) const ITEM_BITS: usize = 4;
-pub(crate) const BOTTLE_BITS: usize = 5;
-pub(crate) const COLOR_BITS: usize = 4;
+pub(crate) const ITEM_BITS: usize = bits_from_build_env(option_env!("WATER_SORT_ITEM_BITS"), 2, 4);
+pub(crate) const BOTTLE_BITS: usize =
+    bits_from_build_env(option_env!("WATER_SORT_BOTTLE_BITS"), 2, 5);
+pub(crate) const COLOR_BITS: usize =
+    bits_from_build_env(option_env!("WATER_SORT_COLOR_BITS"), 2, 4);
 #[cfg(feature = "safes")]
-pub(crate) const SAFE_COUNTER_BITS: usize = 3;
+pub(crate) const SAFE_COUNTER_BITS: usize =
+    bits_from_build_env(option_env!("WATER_SORT_SAFE_COUNTER_BITS"), 2, 3);
 
 /// Need an extra bit for the height and capacity.
 pub(crate) const BOTTLE_SIZE_BITS: usize = ITEM_BITS + 1;
@@ -25,6 +28,36 @@ pub(crate) const COLOR_COUNT: usize = 1 << COLOR_BITS;
 
 #[cfg(feature = "safes")]
 pub(crate) const MAX_SAFE_COUNTER: usize = (1 << SAFE_COUNTER_BITS) - 1;
+
+const fn bits_from_build_env(value: Option<&str>, min: usize, max: usize) -> usize {
+    let Some(value) = value else {
+        return max;
+    };
+
+    let bytes = value.as_bytes();
+    assert!(!bytes.is_empty());
+    assert!(bytes[0] != b'0');
+
+    let mut out = 0usize;
+    let mut i = 0;
+
+    while i < bytes.len() {
+        let b = bytes[i];
+        assert!(b.is_ascii_digit());
+
+        out = out
+            .checked_mul(10)
+            .unwrap()
+            .checked_add((b - b'0') as usize)
+            .unwrap();
+
+        i += 1;
+    }
+
+    assert!(out >= min);
+    assert!(out <= max);
+    out
+}
 
 pub(crate) const fn storage_bits(bits: usize) -> usize {
     assert!(bits <= 4096);
