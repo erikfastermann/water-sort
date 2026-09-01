@@ -1,0 +1,34 @@
+[package]
+name = "water-sort-core"
+version.workspace = true
+edition.workspace = true
+
+[features]
+default = [
+    "hidable_items",
+    "lockable_items",
+    "immovable_bottles",
+    "pluggable_bottles",
+    "freezable_bottles",
+    "curtains",
+    "safes",
+    "lock_groups",
+    "colored_bottles",
+    "color_curtains",
+]
+
+hidable_items = []
+lockable_items = []
+immovable_bottles = []
+pluggable_bottles = []
+freezable_bottles = []
+curtains = []
+safes = []
+lock_groups = []
+colored_bottles = []
+color_curtains = []
+
+[dependencies]
+itertools = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }

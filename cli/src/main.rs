@@ -2,16 +2,10 @@ use std::{error::Error, fs, path::PathBuf};
 
 use clap::{Parser, Subcommand, builder::RangedU64ValueParser};
 
-use crate::{
+use water_sort_core::{
     search::{DFS, MAX_SEARCH_DEPTH, bfs},
     state::{StartingState, State},
 };
-
-mod bits;
-mod layout;
-mod level;
-mod search;
-mod state;
 
 fn main() -> Result<(), Box<dyn Error>> {
     let args = Args::parse();

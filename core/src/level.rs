@@ -19,6 +19,10 @@ pub struct Level {
 }
 
 impl Level {
+    pub fn get(index: usize) -> Option<Level> {
+        Self::try_get(index).unwrap()
+    }
+
     fn try_get(index: usize) -> Result<Option<Level>, Box<dyn Error>> {
         let Some(data_raw) = LEVEL_DATA.get(index) else {
             return Ok(None);
