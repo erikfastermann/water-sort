@@ -1,4 +1,3 @@
-#[cfg(feature = "freezable_bottles")]
 use std::range::RangeInclusive;
 use std::{cmp::min, error::Error};
 
@@ -71,7 +70,7 @@ pub(crate) const fn storage_bits(bits: usize) -> usize {
 /// the maximum bottle size. At most one of the following can be chosen per
 /// bottle: curtain, safe, or lock.
 // TODO: Bottle with counter, refilled when empty with counter not zero.
-#[derive(Clone, Copy, Default, Hash)]
+#[derive(Clone, Copy)]
 pub struct State {
     /// Must be less than the maximum amount of bottles.
     pub(crate) bottle_count: u8,
@@ -171,6 +170,51 @@ pub struct State {
 }
 
 impl State {
+    const ZERO: Self = Self {
+        bottle_count: 0,
+        content: Bits::ZERO,
+        height: Bits::ZERO,
+        capacity: Bits::ZERO,
+        bottle_finalized: Bits::ZERO,
+        color_count: Bits::ZERO,
+        #[cfg(feature = "hidable_items")]
+        item_hidden: Bits::ZERO,
+        #[cfg(feature = "lockable_items")]
+        item_locked: Bits::ZERO,
+        #[cfg(feature = "immovable_bottles")]
+        bottle_immovable: Bits::ZERO,
+        #[cfg(feature = "pluggable_bottles")]
+        pluggable_bottle: Bits::ZERO,
+        #[cfg(feature = "pluggable_bottles")]
+        bottle_plugged: Bits::ZERO,
+        #[cfg(feature = "freezable_bottles")]
+        frozen_run: Bits::ZERO,
+        #[cfg(feature = "freezable_bottles")]
+        frozen: Bits::ZERO,
+        #[cfg(feature = "curtains")]
+        curtain_range: Bits::ZERO,
+        #[cfg(feature = "curtains")]
+        behind_curtain: Bits::ZERO,
+        #[cfg(feature = "safes")]
+        safe_counter: Bits::ZERO,
+        #[cfg(feature = "lock_groups")]
+        item_has_key: Bits::ZERO,
+        #[cfg(feature = "lock_groups")]
+        bottle_key: Bits::ZERO,
+        #[cfg(feature = "lock_groups")]
+        bottle_locked: Bits::ZERO,
+        #[cfg(feature = "colored_bottles")]
+        bottle_color: Bits::ZERO,
+        #[cfg(feature = "color_curtains")]
+        color_curtain: Bits::ZERO,
+        #[cfg(feature = "color_curtains")]
+        color_curtain_active: Bits::ZERO,
+    };
+
+    pub fn bottles(&self) -> impl Iterator<Item = u8> {
+        1..self.bottle_count + 1
+    }
+
     pub fn solved(&self) -> bool {
         for bottle in 1..self.bottle_count + 1 {
             if self.get_height(bottle) != 0 && !self.get_bottle_finalized(bottle) {
@@ -181,174 +225,197 @@ impl State {
         true
     }
 
+    pub fn pours(&self) -> Pours {
+        self.moves().fold(Pours(Bits::ZERO), |acc, mov| {
+            acc.with(mov.from_bottle, mov.to_bottle)
+        })
+    }
+
+    fn moves(&self) -> impl Iterator<Item = Move> {
+        self.bottles()
+            .filter(|from| self.can_move_from(*from))
+            .flat_map(move |from| self.bottles().filter_map(move |to| self.move_to(from, to)))
+    }
+
     pub(crate) fn fill_moves(&self, buffer: &mut [Move; BOTTLE_COUNT * BOTTLE_COUNT]) -> usize {
         debug_assert!(usize::try_from(u16::MAX).is_ok());
 
         let mut index = 0;
 
         for from in 1..self.bottle_count + 1 {
-            let from_height = self.get_height(from);
-            debug_assert!(!self.get_item_hidden(from, from_height.saturating_sub(1)));
-
-            if self.get_bottle_immovable(from)
-                | self.get_bottle_plugged(from)
-                | self.get_frozen(from)
-                | self.get_bottle_finalized(from)
-                | self.get_behind_curtain(from)
-                | (self.get_safe_counter(from) != 0)
-                | self.get_bottle_locked(from)
-                | self.get_color_curtain_active(from)
-            {
+            if !self.can_move_from(from) {
                 continue;
             }
 
             for to in 1..self.bottle_count + 1 {
-                let to_height = self.get_height(to);
-                let to_capacity = self.get_capacity(to);
-                let space = to_capacity - to_height;
-
-                let from_top_color = self.get_color(from, from_height.saturating_sub(1));
-                let to_top_color = self.get_color(to, to_height.saturating_sub(1));
-                let to_bottle_color = self.get_bottle_color(to);
-
-                let to_top_item_locked = self.get_item_locked(to, to_height.saturating_sub(1));
-
-                if (from == to)
-                    | (from_height == 0)
-                    | (space == 0)
-                    | (to_height > 0 && from_top_color != to_top_color)
-                    | (to_height > 0 && to_top_item_locked)
-                    | self.get_bottle_plugged(to)
-                    | self.get_behind_curtain(to)
-                    | (self.get_safe_counter(to) != 0)
-                    | self.get_bottle_locked(to)
-                    | (to_bottle_color != 0 && to_bottle_color != from_top_color)
-                    | self.get_color_curtain_active(to)
-                {
+                let Some(mov) = self.move_to(from, to) else {
                     continue;
-                }
-
-                let from_top_item_locked = self.get_item_locked(from, from_height - 1);
-
-                let mut count = 1;
-                let mut include_next_item = !from_top_item_locked;
-                for i in (0..from_height - 1).rev() {
-                    include_next_item &= self.pour_include(from, i, from_top_color);
-                    count += u8::from(include_next_item);
-                }
-
-                let count = min(count, space);
-                #[cfg(any(
-                    feature = "hidable_items",
-                    feature = "pluggable_bottles",
-                    feature = "lock_groups"
-                ))]
-                let next_from_height = from_height.saturating_sub(count);
-                #[cfg(any(feature = "hidable_items", feature = "lock_groups"))]
-                let next_from_top_index = next_from_height.saturating_sub(1);
-
-                let to_finalized = self.compute_bottle_finalized(to, count, from_top_color);
-                let finalize_bottle = if to_finalized { to } else { 0 };
-
-                #[cfg(feature = "lock_groups")]
-                let (remove_key, unlock_bottle) =
-                    if next_from_height > 0 && self.get_item_has_key(from, next_from_top_index) {
-                        let key = to_index(from, next_from_top_index);
-                        let unlock_bottle =
-                            (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
-                                acc.set(usize::from(i), self.get_bottle_key(i) == key);
-                                acc
-                            });
-                        (key, unlock_bottle)
-                    } else {
-                        (0, Bits::ZERO)
-                    };
-
-                debug_assert!(index < buffer.len());
-                buffer[index % buffer.len()] = Move {
-                    from_bottle: from,
-                    to_bottle: to,
-                    count,
-                    color: from_top_color,
-                    finalize_bottle,
-
-                    #[cfg(feature = "hidable_items")]
-                    show_item: if next_from_height > 0
-                        && self.get_item_hidden(from, next_from_top_index)
-                    {
-                        to_index(from, next_from_top_index)
-                    } else {
-                        0
-                    },
-
-                    #[cfg(feature = "lockable_items")]
-                    unlock_item: if from_top_item_locked {
-                        to_index(from, from_height - 1)
-                    } else {
-                        0
-                    },
-
-                    #[cfg(feature = "pluggable_bottles")]
-                    unplug_bottle: if next_from_height == 0 && self.get_pluggable_bottle(from) {
-                        from
-                    } else {
-                        0
-                    },
-
-                    #[cfg(feature = "freezable_bottles")]
-                    unfreeze_run: if to_finalized && self.get_frozen(to) {
-                        let (run, _) = self.bottle_run(self.frozen_run, to);
-                        debug_assert_eq!(run & self.frozen, run);
-                        run
-                    } else {
-                        Bits::ZERO
-                    },
-
-                    #[cfg(feature = "curtains")]
-                    lift_curtain_range: if to_finalized {
-                        (0..self.bottle_count).fold(Bits::ZERO, |mut acc, i| {
-                            let value = self
-                                .get_curtain_range(i)
-                                .is_some_and(|(from, to)| to > from);
-                            acc.set(usize::from(i), value);
-                            acc
-                        })
-                    } else {
-                        Bits::ZERO
-                    },
-
-                    #[cfg(feature = "safes")]
-                    decrement_safe_counter: if to_finalized {
-                        (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
-                            let counter = self.get_safe_counter(i);
-                            acc.set(usize::from(i), counter != 0);
-                            acc
-                        })
-                    } else {
-                        Bits::ZERO
-                    },
-
-                    #[cfg(feature = "lock_groups")]
-                    remove_key,
-                    #[cfg(feature = "lock_groups")]
-                    unlock_bottle,
-
-                    #[cfg(feature = "color_curtains")]
-                    lift_color_curtain: if to_finalized {
-                        (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
-                            acc.set(usize::from(i), self.get_color_curtain(i) == from_top_color);
-                            acc
-                        })
-                    } else {
-                        Bits::ZERO
-                    },
                 };
 
+                debug_assert!(index < buffer.len());
+                buffer[index % buffer.len()] = mov;
                 index += 1;
             }
         }
 
         index
+    }
+
+    fn can_move_from(&self, bottle: u8) -> bool {
+        let from_height = self.get_height(bottle);
+        debug_assert!(!self.get_item_hidden(bottle, from_height.saturating_sub(1)));
+
+        let invalid = self.get_bottle_immovable(bottle)
+            | self.get_bottle_plugged(bottle)
+            | self.get_frozen(bottle)
+            | self.get_bottle_finalized(bottle)
+            | self.get_behind_curtain(bottle)
+            | (self.get_safe_counter(bottle) != 0)
+            | self.get_bottle_locked(bottle)
+            | self.get_color_curtain_active(bottle);
+
+        !invalid
+    }
+
+    fn move_to(&self, from: u8, to: u8) -> Option<Move> {
+        let from_height = self.get_height(from);
+
+        let to_height = self.get_height(to);
+        let to_capacity = self.get_capacity(to);
+        let space = to_capacity - to_height;
+
+        let from_top_color = self.get_color(from, from_height.saturating_sub(1));
+        let to_top_color = self.get_color(to, to_height.saturating_sub(1));
+        let to_bottle_color = self.get_bottle_color(to);
+
+        let to_top_item_locked = self.get_item_locked(to, to_height.saturating_sub(1));
+
+        if (from == to)
+            | (from_height == 0)
+            | (space == 0)
+            | (to_height > 0 && from_top_color != to_top_color)
+            | (to_height > 0 && to_top_item_locked)
+            | self.get_bottle_plugged(to)
+            | self.get_behind_curtain(to)
+            | (self.get_safe_counter(to) != 0)
+            | self.get_bottle_locked(to)
+            | (to_bottle_color != 0 && to_bottle_color != from_top_color)
+            | self.get_color_curtain_active(to)
+        {
+            return None;
+        }
+
+        let from_top_item_locked = self.get_item_locked(from, from_height - 1);
+
+        let mut count = 1;
+        let mut include_next_item = !from_top_item_locked;
+        for i in (0..from_height - 1).rev() {
+            include_next_item &= self.pour_include(from, i, from_top_color);
+            count += u8::from(include_next_item);
+        }
+
+        let count = min(count, space);
+        #[cfg(any(
+            feature = "hidable_items",
+            feature = "pluggable_bottles",
+            feature = "lock_groups"
+        ))]
+        let next_from_height = from_height.saturating_sub(count);
+        #[cfg(any(feature = "hidable_items", feature = "lock_groups"))]
+        let next_from_top_index = next_from_height.saturating_sub(1);
+
+        let to_finalized = self.compute_bottle_finalized(to, count, from_top_color);
+        let finalize_bottle = if to_finalized { to } else { 0 };
+
+        #[cfg(feature = "lock_groups")]
+        let (remove_key, unlock_bottle) =
+            if next_from_height > 0 && self.get_item_has_key(from, next_from_top_index) {
+                let key = to_index(from, next_from_top_index);
+                let unlock_bottle = (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
+                    acc.set(usize::from(i), self.get_bottle_key(i) == key);
+                    acc
+                });
+                (key, unlock_bottle)
+            } else {
+                (0, Bits::ZERO)
+            };
+
+        Some(Move {
+            from_bottle: from,
+            to_bottle: to,
+            count,
+            color: from_top_color,
+            finalize_bottle,
+
+            #[cfg(feature = "hidable_items")]
+            show_item: if next_from_height > 0 && self.get_item_hidden(from, next_from_top_index) {
+                to_index(from, next_from_top_index)
+            } else {
+                0
+            },
+
+            #[cfg(feature = "lockable_items")]
+            unlock_item: if from_top_item_locked {
+                to_index(from, from_height - 1)
+            } else {
+                0
+            },
+
+            #[cfg(feature = "pluggable_bottles")]
+            unplug_bottle: if next_from_height == 0 && self.get_pluggable_bottle(from) {
+                from
+            } else {
+                0
+            },
+
+            #[cfg(feature = "freezable_bottles")]
+            unfreeze_run: if to_finalized && self.get_frozen(to) {
+                let (run, _) = self.bottle_run(self.frozen_run, to);
+                debug_assert_eq!(run & self.frozen, run);
+                run
+            } else {
+                Bits::ZERO
+            },
+
+            #[cfg(feature = "curtains")]
+            lift_curtain_range: if to_finalized {
+                (0..self.bottle_count).fold(Bits::ZERO, |mut acc, i| {
+                    let value = self
+                        .get_curtain_range(i)
+                        .is_some_and(|(from, to)| to > from);
+                    acc.set(usize::from(i), value);
+                    acc
+                })
+            } else {
+                Bits::ZERO
+            },
+
+            #[cfg(feature = "safes")]
+            decrement_safe_counter: if to_finalized {
+                (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
+                    let counter = self.get_safe_counter(i);
+                    acc.set(usize::from(i), counter != 0);
+                    acc
+                })
+            } else {
+                Bits::ZERO
+            },
+
+            #[cfg(feature = "lock_groups")]
+            remove_key,
+            #[cfg(feature = "lock_groups")]
+            unlock_bottle,
+
+            #[cfg(feature = "color_curtains")]
+            lift_color_curtain: if to_finalized {
+                (1..self.bottle_count + 1).fold(Bits::ZERO, |mut acc, i| {
+                    acc.set(usize::from(i), self.get_color_curtain(i) == from_top_color);
+                    acc
+                })
+            } else {
+                Bits::ZERO
+            },
+        })
     }
 
     fn pour_include(&self, bottle: u8, item: u8, color: u8) -> bool {
@@ -357,7 +424,21 @@ impl State {
             & !self.get_item_locked(bottle, item)
     }
 
-    pub(crate) fn apply_move(&mut self, mov: Move) {
+    pub fn pour(&mut self, from: u8, to: u8) -> Result<(), Box<dyn Error>> {
+        let mov = self
+            .moves()
+            .filter(|mov| mov.from_bottle == from && mov.to_bottle == to)
+            .next();
+
+        match mov {
+            Some(mov) => self.apply_move_unchecked(mov),
+            None => return Err("move not allowed".into()),
+        }
+
+        Ok(())
+    }
+
+    pub(crate) fn apply_move_unchecked(&mut self, mov: Move) {
         let from_height = self.get_height(mov.from_bottle);
         let to_height = self.get_height(mov.to_bottle);
 
@@ -441,7 +522,7 @@ impl State {
         }
     }
 
-    pub(crate) fn undo_move(&mut self, mov: Move) {
+    pub(crate) fn undo_move_unchecked(&mut self, mov: Move) {
         let from_height = self.get_height(mov.from_bottle);
         let to_height = self.get_height(mov.to_bottle);
 
@@ -521,7 +602,7 @@ impl State {
         }
     }
 
-    fn get_height(&self, bottle: u8) -> u8 {
+    pub fn get_height(&self, bottle: u8) -> u8 {
         self.height
             .get_n(usize::from(bottle) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
     }
@@ -535,7 +616,7 @@ impl State {
         );
     }
 
-    pub(crate) fn get_capacity(&self, bottle: u8) -> u8 {
+    pub fn get_capacity(&self, bottle: u8) -> u8 {
         self.capacity
             .get_n(usize::from(bottle) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
     }
@@ -549,7 +630,7 @@ impl State {
         );
     }
 
-    fn get_color(&self, bottle: u8, item: u8) -> u8 {
+    pub fn get_color(&self, bottle: u8, item: u8) -> u8 {
         self.content.get_n(
             usize::from(bottle) * ITEM_COUNT * COLOR_BITS + usize::from(item) * COLOR_BITS,
             COLOR_BITS,
@@ -588,7 +669,7 @@ impl State {
             && self.get_color_count(new_bottom_color) == capacity
     }
 
-    fn get_bottle_finalized(&self, bottle: u8) -> bool {
+    pub fn get_bottle_finalized(&self, bottle: u8) -> bool {
         self.bottle_finalized.has(usize::from(bottle))
     }
 
@@ -612,7 +693,7 @@ impl State {
         );
     }
 
-    fn get_item_hidden(&self, bottle: u8, item: u8) -> bool {
+    pub fn get_item_hidden(&self, bottle: u8, item: u8) -> bool {
         #[cfg(feature = "hidable_items")]
         {
             self.item_hidden
@@ -632,7 +713,7 @@ impl State {
             .set(usize::from(bottle) * ITEM_COUNT + usize::from(item), hidden);
     }
 
-    fn get_item_locked(&self, bottle: u8, item: u8) -> bool {
+    pub fn get_item_locked(&self, bottle: u8, item: u8) -> bool {
         #[cfg(feature = "lockable_items")]
         {
             self.item_locked
@@ -652,7 +733,7 @@ impl State {
             .set(usize::from(bottle) * ITEM_COUNT + usize::from(item), locked);
     }
 
-    fn get_bottle_immovable(&self, bottle: u8) -> bool {
+    pub fn get_bottle_immovable(&self, bottle: u8) -> bool {
         #[cfg(feature = "immovable_bottles")]
         {
             self.bottle_immovable.has(usize::from(bottle))
@@ -670,9 +751,16 @@ impl State {
         self.bottle_immovable.set(usize::from(bottle), immovable);
     }
 
-    #[cfg(feature = "pluggable_bottles")]
-    fn get_pluggable_bottle(&self, bottle: u8) -> bool {
-        self.pluggable_bottle.has(usize::from(bottle))
+    pub fn get_pluggable_bottle(&self, bottle: u8) -> bool {
+        #[cfg(feature = "pluggable_bottles")]
+        {
+            self.pluggable_bottle.has(usize::from(bottle))
+        }
+        #[cfg(not(feature = "pluggable_bottles"))]
+        {
+            let _ = bottle;
+            false
+        }
     }
 
     #[cfg(feature = "pluggable_bottles")]
@@ -681,7 +769,7 @@ impl State {
         self.pluggable_bottle.set(usize::from(bottle), pluggable);
     }
 
-    fn get_bottle_plugged(&self, bottle: u8) -> bool {
+    pub fn get_bottle_plugged(&self, bottle: u8) -> bool {
         #[cfg(feature = "pluggable_bottles")]
         {
             self.bottle_plugged.has(usize::from(bottle))
@@ -699,6 +787,23 @@ impl State {
         self.bottle_plugged.set(usize::from(bottle), plugged);
     }
 
+    pub fn get_frozen_ranges(&self) -> impl Iterator<Item = RangeInclusive<u8>> {
+        #[cfg(feature = "freezable_bottles")]
+        {
+            use itertools::Itertools;
+
+            (1..self.bottle_count + 1)
+                .filter(|bottle| self.get_frozen(*bottle))
+                .map(|bottle| self.bottle_run(self.frozen_run, bottle).1)
+                .dedup()
+        }
+
+        #[cfg(not(feature = "freezable_bottles"))]
+        {
+            std::iter::empty()
+        }
+    }
+
     pub(crate) fn get_frozen(&self, bottle: u8) -> bool {
         #[cfg(feature = "freezable_bottles")]
         {
@@ -708,6 +813,20 @@ impl State {
         {
             let _ = bottle;
             false
+        }
+    }
+
+    pub fn get_curtain_ranges(&self) -> impl Iterator<Item = RangeInclusive<u8>> {
+        #[cfg(feature = "curtains")]
+        {
+            (0..self.bottle_count)
+                .filter_map(|i| self.get_curtain_range(i))
+                .filter(|(from, to)| to > from)
+                .map(|(from, to)| (from..=to - 1).into())
+        }
+        #[cfg(not(feature = "curtains"))]
+        {
+            std::iter::empty()
         }
     }
 
@@ -759,7 +878,7 @@ impl State {
         self.behind_curtain.set(usize::from(bottle), behind_curtain);
     }
 
-    fn get_safe_counter(&self, bottle: u8) -> u8 {
+    pub fn get_safe_counter(&self, bottle: u8) -> u8 {
         #[cfg(feature = "safes")]
         {
             self.safe_counter
@@ -782,10 +901,17 @@ impl State {
         );
     }
 
-    #[cfg(feature = "lock_groups")]
-    fn get_item_has_key(&self, bottle: u8, item: u8) -> bool {
-        self.item_has_key
-            .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
+    pub fn get_item_has_key(&self, bottle: u8, item: u8) -> bool {
+        #[cfg(feature = "lock_groups")]
+        {
+            self.item_has_key
+                .has(usize::from(bottle) * ITEM_COUNT + usize::from(item))
+        }
+        #[cfg(not(feature = "lock_groups"))]
+        {
+            let _ = (bottle, item);
+            false
+        }
     }
 
     #[cfg(feature = "lock_groups")]
@@ -795,6 +921,32 @@ impl State {
             usize::from(bottle) * ITEM_COUNT + usize::from(item),
             has_key,
         );
+    }
+
+    pub fn get_lock_group_ranges(&self) -> impl Iterator<Item = RangeInclusive<u8>> {
+        #[cfg(feature = "lock_groups")]
+        {
+            let mut bottle = 1u8;
+            std::iter::from_fn(move || {
+                while bottle < self.bottle_count + 1 {
+                    let start = bottle;
+                    let key = self.get_bottle_key(start);
+                    bottle += 1;
+                    while bottle < self.bottle_count + 1 && self.get_bottle_key(bottle) == key {
+                        bottle += 1;
+                    }
+                    if self.get_bottle_locked(start) {
+                        return Some((start..=bottle - 1).into());
+                    }
+                }
+
+                None
+            })
+        }
+        #[cfg(not(feature = "lock_groups"))]
+        {
+            std::iter::empty()
+        }
     }
 
     #[cfg(feature = "lock_groups")]
@@ -827,7 +979,7 @@ impl State {
         }
     }
 
-    fn get_bottle_color(&self, bottle: u8) -> u8 {
+    pub fn get_bottle_color(&self, bottle: u8) -> u8 {
         #[cfg(feature = "colored_bottles")]
         {
             self.bottle_color
@@ -850,10 +1002,17 @@ impl State {
         );
     }
 
-    #[cfg(feature = "color_curtains")]
-    fn get_color_curtain(&self, bottle: u8) -> u8 {
-        self.color_curtain
-            .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
+    pub fn get_color_curtain(&self, bottle: u8) -> u8 {
+        #[cfg(feature = "color_curtains")]
+        {
+            self.color_curtain
+                .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
+        }
+        #[cfg(not(feature = "color_curtains"))]
+        {
+            let _ = bottle;
+            0
+        }
     }
 
     #[cfg(feature = "color_curtains")]
@@ -866,7 +1025,7 @@ impl State {
         );
     }
 
-    fn get_color_curtain_active(&self, bottle: u8) -> bool {
+    pub fn get_color_curtain_active(&self, bottle: u8) -> bool {
         #[cfg(feature = "color_curtains")]
         {
             self.color_curtain_active.has(usize::from(bottle))
@@ -1013,7 +1172,7 @@ impl TryFrom<&StartingState> for State {
             return Err("height exceeds capacity".into());
         }
 
-        let mut state = State::default();
+        let mut state = State::ZERO;
         state.bottle_count = u8::try_from(value.content.len()).unwrap();
         let mut color_counts = [0u8; COLOR_COUNT];
 
@@ -1240,9 +1399,8 @@ fn to_index(bottle: u8, item: u8) -> u16 {
 /// Collect all changes to apply a move, which can be undone.
 // All optional item indices use the zero value, which is possible because the
 // zero bottle index is reserved.
-// TODO: Having Default on Move is not great, also for other structs.
-#[derive(Clone, Copy, Default)]
-pub struct Move {
+#[derive(Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) struct Move {
     from_bottle: u8,
     to_bottle: u8,
     count: u8,
@@ -1269,53 +1427,78 @@ pub struct Move {
     lift_color_curtain: Bits<{ storage_bits(BOTTLE_COUNT) }>,
 }
 
+pub struct Pours(Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_COUNT) }>);
+
+impl Pours {
+    fn with(mut self, from: u8, to: u8) -> Self {
+        assert_ne!(from, 0);
+        assert!(usize::from(from) < BOTTLE_COUNT);
+        assert_ne!(to, 0);
+        assert!(usize::from(to) < BOTTLE_COUNT);
+
+        self.0
+            .set(usize::from(from) * BOTTLE_COUNT + usize::from(to), true);
+        self
+    }
+
+    pub fn has(&self, from: u8, to: u8) -> bool {
+        assert_ne!(from, 0);
+        assert!(usize::from(from) < BOTTLE_COUNT);
+        assert_ne!(to, 0);
+        assert!(usize::from(to) < BOTTLE_COUNT);
+
+        self.0
+            .has(usize::from(from) * BOTTLE_COUNT + usize::from(to))
+    }
+}
+
 #[derive(Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct StartingState {
-    content: Vec<Vec<u8>>,
-    capacity: Vec<u8>,
+    pub content: Vec<Vec<u8>>,
+    pub capacity: Vec<u8>,
 
     #[cfg(feature = "hidable_items")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    hidden_items: Vec<(u8, u8)>,
+    pub hidden_items: Vec<(u8, u8)>,
 
     #[cfg(feature = "lockable_items")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    locked_items: Vec<(u8, u8)>,
+    pub locked_items: Vec<(u8, u8)>,
 
     #[cfg(feature = "immovable_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    immovable_bottles: Vec<u8>,
+    pub immovable_bottles: Vec<u8>,
 
     #[cfg(feature = "pluggable_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pluggable_bottles: Vec<(u8, bool)>,
+    pub pluggable_bottles: Vec<(u8, bool)>,
 
     #[cfg(feature = "freezable_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    frozen_bottle_ranges: Vec<(u8, u8)>,
+    pub frozen_bottle_ranges: Vec<(u8, u8)>,
 
     #[cfg(feature = "curtains")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    curtain_ranges: Vec<(u8, u8)>,
+    pub curtain_ranges: Vec<(u8, u8)>,
 
     #[cfg(feature = "safes")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    safes: Vec<(u8, u8)>,
+    pub safes: Vec<(u8, u8)>,
 
     #[cfg(feature = "lock_groups")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    lock_group_ranges: Vec<(u8, u8)>,
+    pub lock_group_ranges: Vec<(u8, u8)>,
 
     #[cfg(feature = "lock_groups")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    lock_group_keys: Vec<(u8, u8)>,
+    pub lock_group_keys: Vec<(u8, u8)>,
 
     #[cfg(feature = "colored_bottles")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    colored_bottles: Vec<(u8, u8)>,
+    pub colored_bottles: Vec<(u8, u8)>,
 
     #[cfg(feature = "color_curtains")]
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    color_curtains: Vec<(u8, u8)>,
+    pub color_curtains: Vec<(u8, u8)>,
 }

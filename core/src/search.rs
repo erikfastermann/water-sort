@@ -113,9 +113,9 @@ impl DFS {
         let mut best_value = i8::MAX;
 
         for mov in moves.iter().copied() {
-            self.state.apply_move(mov);
+            self.state.apply_move_unchecked(mov);
             let result = self.search_recursive(next_buffer);
-            self.state.undo_move(mov);
+            self.state.undo_move_unchecked(mov);
 
             all_failed &= result == i8::MIN;
             if result > 0 {
@@ -178,7 +178,7 @@ pub fn bfs(input_state: &State, depth: i8) -> Result<i8, Box<dyn Error>> {
         let moves = &moves_buffer[..move_count];
 
         for mov in moves.iter().copied() {
-            state.apply_move(mov);
+            state.apply_move_unchecked(mov);
             let next_search_state = SearchState::from(&state);
 
             let hash = next_search_state.search_hash();
@@ -188,7 +188,7 @@ pub fn bfs(input_state: &State, depth: i8) -> Result<i8, Box<dyn Error>> {
                 next_states += 1;
             }
 
-            state.undo_move(mov);
+            state.undo_move_unchecked(mov);
         }
 
         current_states -= 1;

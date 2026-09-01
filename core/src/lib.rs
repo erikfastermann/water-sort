@@ -1,4 +1,4 @@
-pub mod bits;
+mod bits;
 pub mod layout;
 pub mod level;
 pub mod search;

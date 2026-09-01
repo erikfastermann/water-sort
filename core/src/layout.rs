@@ -6,9 +6,6 @@ use std::error::Error;
 ))]
 use std::range::RangeInclusive;
 
-#[cfg(any(feature = "freezable_bottles", feature = "lock_groups"))]
-use itertools::Itertools;
-
 use crate::{bits::Bits, state::State};
 
 const LINES: usize = 3;
@@ -31,7 +28,7 @@ const REPR_UNUSED_MARKER: u8 = 0;
 pub struct Layout([[u8; REPR_LINE_LEN]; LINES]);
 
 impl Layout {
-    pub fn new(data: &[impl AsRef<str>], state: &State) -> Result<Layout, Box<dyn Error>> {
+    pub(crate) fn new(data: &[impl AsRef<str>], state: &State) -> Result<Layout, Box<dyn Error>> {
         if data.is_empty() || data.len() > LINES {
             return Err("no or too many lines".into());
         }
@@ -82,41 +79,13 @@ impl Layout {
         }
 
         #[cfg(feature = "freezable_bottles")]
-        {
-            let frozen_ranges = (1..state.bottle_count + 1)
-                .filter(|bottle| state.get_frozen(*bottle))
-                .map(|bottle| state.bottle_run(state.frozen_run, bottle).1)
-                .dedup();
-            self.validate_ranges(state, frozen_ranges)?;
-        }
+        self.validate_ranges(state, state.get_frozen_ranges())?;
 
         #[cfg(feature = "curtains")]
-        {
-            let curtain_ranges = (0..state.bottle_count)
-                .filter_map(|i| state.get_curtain_range(i))
-                .filter(|(from, to)| to > from)
-                .map(|(from, to)| (from..=to - 1).into());
-            self.validate_ranges(state, curtain_ranges)?;
-        }
+        self.validate_ranges(state, state.get_curtain_ranges())?;
 
         #[cfg(feature = "lock_groups")]
-        {
-            let lock_group_chunks =
-                (1..state.bottle_count + 1).chunk_by(|bottle| state.get_bottle_key(*bottle));
-            let mut offset = 1u8;
-            let lock_group_ranges = lock_group_chunks.into_iter().filter_map(|(_, mut group)| {
-                let bottle_locked = state.get_bottle_locked(group.next().unwrap());
-                let count = u8::try_from(1 + group.count()).unwrap();
-                let start = offset;
-                offset += count;
-                if bottle_locked {
-                    Some((start..=offset - 1).into())
-                } else {
-                    None
-                }
-            });
-            self.validate_ranges(state, lock_group_ranges)?;
-        }
+        self.validate_ranges(state, state.get_lock_group_ranges())?;
 
         Ok(())
     }
