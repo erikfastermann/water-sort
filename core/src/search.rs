@@ -31,7 +31,7 @@ impl DFS {
         }
 
         if visited_cache_bytes < 1_000_000
-            || visited_cache_bytes > 0xff_ff_ff_ff_ff_ff
+            || visited_cache_bytes as u64 > 0xff_ff_ff_ff_ff_ff
             || !visited_cache_bytes.is_power_of_two()
         {
             return Err("invalid visited size".into());
