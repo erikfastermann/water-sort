@@ -1069,11 +1069,15 @@ impl State {
         }
 
         for (from, to) in ranges.iter().copied() {
+            if from == 0 || to == 0 {
+                return Err("bottle range contains zero".into());
+            }
+
             if from >= to {
                 return Err("invalid bottle range".into());
             }
 
-            if from > self.bottle_count || to > self.bottle_count {
+            if from > self.bottle_count || to > self.bottle_count + 1 {
                 return Err("bottle range too large".into());
             }
         }
@@ -1084,8 +1088,8 @@ impl State {
         let mut index = 1;
 
         for (from, to) in ranges.iter().copied() {
-            let swap_bit = index < from + 1;
-            while index < from + 1 {
+            let swap_bit = index < from;
+            while index < from {
                 run.set(usize::from(index), current_bit);
                 index += 1;
             }
@@ -1093,7 +1097,7 @@ impl State {
                 current_bit = !current_bit;
             }
 
-            for _ in from + 1..to + 1 {
+            for _ in from..to {
                 run.set(usize::from(index), current_bit);
                 set.set(usize::from(index), true);
                 index += 1;
@@ -1202,47 +1206,67 @@ impl TryFrom<&StartingState> for State {
 
         #[cfg(feature = "hidable_items")]
         for (bottle, item) in value.hidden_items.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
+            if bottle == 0 {
+                return Err("hidden item bottle is zero".into());
+            }
+
+            if usize::from(bottle) > value.content.len() {
                 return Err("hidden item bottle not in range".into());
             }
 
-            if usize::from(item) >= value.content[usize::from(bottle)].len().saturating_sub(1) {
+            if usize::from(item)
+                >= value.content[usize::from(bottle) - 1]
+                    .len()
+                    .saturating_sub(1)
+            {
                 return Err("hidden item not in range".into());
             }
 
-            state.set_item_hidden(bottle.checked_add(1).unwrap(), item, true);
+            state.set_item_hidden(bottle, item, true);
         }
 
         #[cfg(feature = "lockable_items")]
         for (bottle, item) in value.locked_items.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
+            if bottle == 0 {
+                return Err("locked item bottle is zero".into());
+            }
+
+            if usize::from(bottle) > value.content.len() {
                 return Err("locked item bottle not in range".into());
             }
 
-            if usize::from(item) >= value.content[usize::from(bottle)].len() {
+            if usize::from(item) >= value.content[usize::from(bottle) - 1].len() {
                 return Err("locked item not in range".into());
             }
 
-            state.set_item_locked(bottle.checked_add(1).unwrap(), item, true);
+            state.set_item_locked(bottle, item, true);
         }
 
         #[cfg(feature = "immovable_bottles")]
         for bottle in value.immovable_bottles.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
+            if bottle == 0 {
+                return Err("immovable bottle is zero".into());
+            }
+
+            if usize::from(bottle) > value.content.len() {
                 return Err("immovable bottle not in range".into());
             }
 
-            state.set_bottle_immovable(bottle.checked_add(1).unwrap(), true);
+            state.set_bottle_immovable(bottle, true);
         }
 
         #[cfg(feature = "pluggable_bottles")]
         for (bottle, start_plugged) in value.pluggable_bottles.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
+            if bottle == 0 {
+                return Err("pluggable bottle is zero".into());
+            }
+
+            if usize::from(bottle) > value.content.len() {
                 return Err("pluggable bottle not in range".into());
             }
 
-            state.set_pluggable_bottle(bottle.checked_add(1).unwrap(), true);
-            state.set_bottle_plugged(bottle.checked_add(1).unwrap(), start_plugged);
+            state.set_pluggable_bottle(bottle, true);
+            state.set_bottle_plugged(bottle, start_plugged);
         }
 
         #[cfg(feature = "freezable_bottles")]
@@ -1254,19 +1278,25 @@ impl TryFrom<&StartingState> for State {
         {
             (_, state.behind_curtain) = state.compute_run(&value.curtain_ranges)?;
             for (index, (from, to)) in value.curtain_ranges.iter().copied().enumerate() {
-                state.set_curtain_range(u8::try_from(index).unwrap(), from + 1, to + 1);
+                state.set_curtain_range(u8::try_from(index).unwrap(), from, to);
             }
         }
 
         #[cfg(feature = "safes")]
         for (bottle, counter) in value.safes.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
-                return Err("safe counter not in range".into());
+            if bottle == 0 {
+                return Err("safe counter bottle is zero".into());
             }
+
+            if usize::from(bottle) > value.content.len() {
+                return Err("safe counter bottle not in range".into());
+            }
+
             if usize::from(counter) > MAX_SAFE_COUNTER {
                 return Err("safe counter value not in range".into());
             }
-            state.set_safe_counter(bottle + 1, counter);
+
+            state.set_safe_counter(bottle, counter);
         }
 
         #[cfg(feature = "lock_groups")]
@@ -1282,21 +1312,25 @@ impl TryFrom<&StartingState> for State {
                 .copied()
                 .zip(value.lock_group_ranges.iter().copied())
             {
-                if usize::from(bottle) >= value.content.len() {
+                if bottle == 0 {
+                    return Err("lock group key bottle is zero".into());
+                }
+
+                if usize::from(bottle) > value.content.len() {
                     return Err("lock group key bottle not in range".into());
                 }
 
-                if usize::from(item) >= value.content[usize::from(bottle)].len() {
+                if usize::from(item) >= value.content[usize::from(bottle) - 1].len() {
                     return Err("lock group key item not in range".into());
                 }
 
-                if usize::from(item) == value.content[usize::from(bottle)].len() - 1 {
+                if usize::from(item) == value.content[usize::from(bottle) - 1].len() - 1 {
                     return Err("lock group key should not start on top of a bottle".into());
                 }
 
-                let color = value.content[usize::from(bottle)][usize::from(item) + 1];
-                if state.pour_include(bottle + 1, item, color)
-                    && state.pour_include(bottle + 1, item + 1, color)
+                let color = value.content[usize::from(bottle) - 1][usize::from(item) + 1];
+                if state.pour_include(bottle, item, color)
+                    && state.pour_include(bottle, item + 1, color)
                 {
                     return Err("lock group key must be the first item of a pour".into());
                 }
@@ -1306,14 +1340,14 @@ impl TryFrom<&StartingState> for State {
                     return Err("lock group key stored inside itself".into());
                 }
 
-                if state.get_item_has_key(bottle + 1, item) {
+                if state.get_item_has_key(bottle, item) {
                     return Err("lock group key duplicate".into());
                 }
 
-                state.set_item_has_key(bottle + 1, item, true);
-                let key = to_index(bottle + 1, item);
+                state.set_item_has_key(bottle, item, true);
+                let key = to_index(bottle, item);
                 for i in from..to {
-                    state.set_bottle_key(i + 1, key);
+                    state.set_bottle_key(i, key);
                 }
             }
         }
@@ -1331,29 +1365,41 @@ impl TryFrom<&StartingState> for State {
 
         #[cfg(feature = "colored_bottles")]
         for (bottle, color) in value.colored_bottles.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
+            if bottle == 0 {
+                return Err("colored bottle is zero".into());
+            }
+
+            if usize::from(bottle) > value.content.len() {
                 return Err("colored bottle not in range".into());
             }
+
             if color == 0 || usize::from(color) >= COLOR_COUNT {
                 return Err("colored bottle color value not in range".into());
             }
+
             // TODO: Could check if the color appears at all.
-            state.set_bottle_color(bottle + 1, color);
+            state.set_bottle_color(bottle, color);
         }
 
         #[cfg(feature = "color_curtains")]
         for (bottle, color) in value.color_curtains.iter().copied() {
-            if usize::from(bottle) >= value.content.len() {
-                return Err("color curtain not in range".into());
+            if bottle == 0 {
+                return Err("color curtain bottle is zero".into());
             }
+
+            if usize::from(bottle) > value.content.len() {
+                return Err("color curtain bottle not in range".into());
+            }
+
             if color == 0 || usize::from(color) >= COLOR_COUNT {
                 return Err("color curtain value not in range".into());
             }
+
             // TODO:
             // Could check if the color appears at all or if a curtain hides
             // a color from itself.
-            state.set_color_curtain(bottle + 1, color);
-            state.set_color_curtain_active(bottle + 1, true);
+            state.set_color_curtain(bottle, color);
+            state.set_color_curtain_active(bottle, true);
         }
 
         for bottle in 1..state.bottle_count + 1 {
