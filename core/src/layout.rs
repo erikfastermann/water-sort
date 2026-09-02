@@ -1,35 +1,35 @@
-use std::error::Error;
 #[cfg(any(
     feature = "freezable_bottles",
     feature = "curtains",
     feature = "lock_groups"
 ))]
 use std::range::RangeInclusive;
+use std::{error::Error, range::Range};
 
 use crate::{bits::Bits, state::State};
 
-const LINES: usize = 3;
-
-const COLUMNS: usize = 6;
-
-const TOTAL: usize = LINES * COLUMNS;
-
-const SEPARATOR: u8 = b'|';
-
-const CHARS: [u8; TOTAL] = *b"123456789ABCDEFGHI";
-
-const MAX_CAPACITY: [u8; LINES] = [4, 10, 16];
-
-const REPR_LINE_LEN: usize = 2 * COLUMNS - 1;
-
-const REPR_UNUSED_MARKER: u8 = 0;
-
 #[derive(Clone, Copy)]
-pub struct Layout([[u8; REPR_LINE_LEN]; LINES]);
+pub struct Layout([[u8; Self::REPR_LINE_LEN as usize]; Self::LINES as usize]);
 
 impl Layout {
+    pub const LINES: u8 = 3;
+
+    const COLUMNS: u8 = 6;
+
+    const TOTAL: u8 = Self::LINES * Self::COLUMNS;
+
+    const SEPARATOR: u8 = b'|';
+
+    const CHARS: [u8; Self::TOTAL as usize] = *b"123456789ABCDEFGHI";
+
+    const MAX_CAPACITY: [u8; Self::LINES as usize] = [4, 10, 16];
+
+    pub const REPR_LINE_LEN: u8 = 2 * Self::COLUMNS - 1;
+
+    const REPR_UNUSED_MARKER: u8 = 0;
+
     pub(crate) fn new(data: &[impl AsRef<str>], state: &State) -> Result<Layout, Box<dyn Error>> {
-        if data.is_empty() || data.len() > LINES {
+        if data.is_empty() || data.len() > usize::from(Self::LINES) {
             return Err("no or too many lines".into());
         }
 
@@ -40,16 +40,18 @@ impl Layout {
                 return Err("line data is not only ascii".into());
             }
 
-            if line.len() != REPR_LINE_LEN {
+            if line.len() != usize::from(Self::REPR_LINE_LEN) {
                 return Err("bad line data length".into());
             }
 
-            if line.as_bytes().contains(&REPR_UNUSED_MARKER) {
+            if line.as_bytes().contains(&Self::REPR_UNUSED_MARKER) {
                 return Err("input line contains unused marker".into());
             }
         }
 
-        let mut out = Layout([[REPR_UNUSED_MARKER; REPR_LINE_LEN]; LINES]);
+        let mut out = Layout(
+            [[Self::REPR_UNUSED_MARKER; Self::REPR_LINE_LEN as usize]; Self::LINES as usize],
+        );
         for (index, line) in data.iter().enumerate() {
             out.0[index].copy_from_slice(line.as_ref().as_bytes());
         }
@@ -58,18 +60,19 @@ impl Layout {
         Ok(out)
     }
 
-    fn validate(self, state: &State) -> Result<(), Box<dyn Error>> {
+    fn validate(&self, state: &State) -> Result<(), Box<dyn Error>> {
         for line in self.lines() {
             Self::validate_line(line)?;
         }
 
-        let used_chars = self.lines().flatten().filter(|ch| *ch != SEPARATOR).fold(
-            Bits::<256>::ZERO,
-            |mut acc, ch| {
+        let used_chars = self
+            .lines()
+            .flatten()
+            .filter(|ch| *ch != Self::SEPARATOR)
+            .fold(Bits::<256>::ZERO, |mut acc, ch| {
                 acc.set(usize::from(ch), true);
                 acc
-            },
-        );
+            });
         if used_chars.count() != u32::from(state.bottle_count) {
             return Err("used chars does not match bottle count".into());
         }
@@ -90,23 +93,26 @@ impl Layout {
         Ok(())
     }
 
-    fn validate_line(line: [u8; REPR_LINE_LEN]) -> Result<(), Box<dyn Error>> {
+    fn validate_line(line: [u8; Self::REPR_LINE_LEN as usize]) -> Result<(), Box<dyn Error>> {
         if !line
             .into_iter()
-            .all(|ch| ch == SEPARATOR || CHARS.contains(&ch))
+            .all(|ch| ch == Self::SEPARATOR || Self::CHARS.contains(&ch))
         {
             return Err("bad line chars".into());
         }
 
-        if line.into_iter().all(|ch| ch == SEPARATOR) {
+        if line.into_iter().all(|ch| ch == Self::SEPARATOR) {
             return Err("line only consists of separators".into());
         }
 
-        let prefix_separators = line.into_iter().take_while(|ch| *ch == SEPARATOR).count();
+        let prefix_separators = line
+            .into_iter()
+            .take_while(|ch| *ch == Self::SEPARATOR)
+            .count();
         let suffix_separators = line
             .into_iter()
             .rev()
-            .take_while(|ch| *ch == SEPARATOR)
+            .take_while(|ch| *ch == Self::SEPARATOR)
             .count();
         if prefix_separators != suffix_separators {
             return Err("number of prefix and suffix separators should match".into());
@@ -118,9 +124,9 @@ impl Layout {
             .enumerate()
             .all(|(i, ch)| {
                 if i % 2 == 0 {
-                    CHARS.contains(&ch)
+                    Self::CHARS.contains(&ch)
                 } else {
-                    ch == SEPARATOR
+                    ch == Self::SEPARATOR
                 }
             })
         {
@@ -130,11 +136,11 @@ impl Layout {
         Ok(())
     }
 
-    fn validate_bottle(self, state: &State, bottle: u8) -> Result<(), Box<dyn Error>> {
+    fn validate_bottle(&self, state: &State, bottle: u8) -> Result<(), Box<dyn Error>> {
         let ch = Self::bottle_to_char(bottle).unwrap();
         let capacity = state.get_capacity(bottle);
 
-        let line_count = MAX_CAPACITY
+        let line_count = Self::MAX_CAPACITY
             .iter()
             .copied()
             .position(|max_capacity| capacity <= max_capacity)
@@ -171,7 +177,7 @@ impl Layout {
         feature = "lock_groups"
     ))]
     fn validate_ranges(
-        self,
+        &self,
         state: &State,
         iter: impl IntoIterator<Item = RangeInclusive<u8>>,
     ) -> Result<(), Box<dyn Error>> {
@@ -180,7 +186,7 @@ impl Layout {
             let (line, column) = self.first_position(start_ch).unwrap();
 
             for (offset, bottle) in range.into_iter().enumerate() {
-                if state.get_capacity(bottle) > MAX_CAPACITY[0] {
+                if state.get_capacity(bottle) > Self::MAX_CAPACITY[0] {
                     return Err(
                         "freezable, curtain, or lock group bottle cannot span multiple rows".into(),
                     );
@@ -201,19 +207,33 @@ impl Layout {
         Ok(())
     }
 
+    pub fn line_count(&self) -> u8 {
+        self.lines().count() as u8
+    }
+
+    pub fn bottle_position(&self, bottle: u8) -> Option<(Range<u8>, u8)> {
+        let ch = Self::bottle_to_char(bottle)?;
+        let (line, column) = self.first_position(ch)?;
+        let count = self.0[usize::from(line)..]
+            .iter()
+            .take_while(|c| c[usize::from(column)] == ch)
+            .count();
+        Some(((line..line + count as u8).into(), column))
+    }
+
     fn bottle_to_char(bottle: u8) -> Option<u8> {
         usize::from(bottle)
             .checked_sub(1)
-            .and_then(|i| CHARS.get(i).copied())
+            .and_then(|i| Self::CHARS.get(i).copied())
     }
 
-    fn lines(self) -> impl Iterator<Item = [u8; REPR_LINE_LEN]> {
+    fn lines(&self) -> impl Iterator<Item = [u8; Self::REPR_LINE_LEN as usize]> {
         self.0
             .into_iter()
-            .take_while(|line| line[0] != REPR_UNUSED_MARKER)
+            .take_while(|line| line[0] != Self::REPR_UNUSED_MARKER)
     }
 
-    fn first_position(self, ch: u8) -> Option<(u8, u8)> {
+    fn first_position(&self, ch: u8) -> Option<(u8, u8)> {
         self.lines()
             .enumerate()
             .flat_map(|(l, line)| {
