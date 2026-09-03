@@ -231,7 +231,7 @@ impl State {
         })
     }
 
-    fn moves(&self) -> impl Iterator<Item = Move> {
+    pub(crate) fn moves(&self) -> impl Iterator<Item = Move> {
         self.bottles()
             .filter(|from| self.can_move_from(*from))
             .flat_map(move |from| self.bottles().filter_map(move |to| self.move_to(from, to)))
@@ -427,8 +427,7 @@ impl State {
     pub fn pour(&mut self, from: u8, to: u8) -> Result<(), Box<dyn Error>> {
         let mov = self
             .moves()
-            .filter(|mov| mov.from_bottle == from && mov.to_bottle == to)
-            .next();
+            .find(|mov| mov.from_bottle == from && mov.to_bottle == to);
 
         match mov {
             Some(mov) => self.apply_move_unchecked(mov),
@@ -1447,8 +1446,8 @@ fn to_index(bottle: u8, item: u8) -> u16 {
 // zero bottle index is reserved.
 #[derive(Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct Move {
-    from_bottle: u8,
-    to_bottle: u8,
+    pub(crate) from_bottle: u8,
+    pub(crate) to_bottle: u8,
     count: u8,
     color: u8,
     finalize_bottle: u8,
@@ -1485,6 +1484,14 @@ impl Pours {
         self.0
             .set(usize::from(from) * BOTTLE_COUNT + usize::from(to), true);
         self
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0 == Bits::ZERO
+    }
+
+    pub fn has_from(&self, from: u8) -> bool {
+        (1..BOTTLE_COUNT as u8).any(|to| self.has(from, to))
     }
 
     pub fn has(&self, from: u8, to: u8) -> bool {
