@@ -22,7 +22,7 @@ impl Layout {
 
     const CHARS: [u8; Self::TOTAL as usize] = *b"123456789ABCDEFGHI";
 
-    const MAX_CAPACITY: [u8; Self::LINES as usize] = [4, 10, 16];
+    pub const MAX_CAPACITY: [u8; Self::LINES as usize] = [4, 10, 16];
 
     pub const REPR_LINE_LEN: u8 = 2 * Self::COLUMNS - 1;
 
