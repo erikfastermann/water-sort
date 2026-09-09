@@ -1,0 +1,28 @@
+{
+    "description": "Locked items appear at the bottom, in the middle and on top of a bottle, and the last bottle is immovable with a partial fill. Three centered rows of four.",
+    "layout": ["||1|2|3|4||", "||5|6|7|8||", "||9|A|B|C||"],
+    "starting_state": {
+        "content": [
+            [8, 7, 5, 9],
+            [6, 2, 7, 8],
+            [1, 7, 2, 6],
+            [2, 1, 1, 4],
+            [3, 4, 7, 2],
+            [6, 6, 4, 5],
+            [9, 3, 3, 8],
+            [4, 3, 1, 5],
+            [5, 8],
+            [],
+            [],
+            [9, 9]
+        ],
+        "capacity": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+        "locked_items": [
+            [1, 2],
+            [3, 0],
+            [6, 3],
+            [8, 1]
+        ],
+        "immovable_bottles": [12]
+    }
+}

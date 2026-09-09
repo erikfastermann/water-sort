@@ -1,0 +1,30 @@
+{
+    "description": "Three pluggable bottles toggle every turn, two of them out of phase with the third. Two colored bottles act as intake filters, one of them starting with foreign colors.",
+    "layout": ["1|2|3|4|5|6", "7|8|9|A|B|C"],
+    "starting_state": {
+        "content": [
+            [6, 3, 5, 4],
+            [2, 1, 9, 8],
+            [9, 1, 4, 7],
+            [3, 5, 4, 9],
+            [7, 4, 2, 2],
+            [5, 5, 6, 8],
+            [3, 7, 3, 1],
+            [1, 8, 9, 8],
+            [7, 6, 6, 2],
+            [],
+            [],
+            []
+        ],
+        "capacity": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+        "pluggable_bottles": [
+            [3, true],
+            [7, false],
+            [10, true]
+        ],
+        "colored_bottles": [
+            [5, 5],
+            [11, 6]
+        ]
+    }
+}

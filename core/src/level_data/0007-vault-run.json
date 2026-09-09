@@ -1,0 +1,31 @@
+{
+    "description": "Six safes with counters one to five. Two neighbouring bottles share a counter and should render as one wide safe, the rest stay separate across three rows of different width.",
+    "layout": ["|1|2|3|4|5|", "||6|7|8|9||", "|A|B|C|D|E|"],
+    "starting_state": {
+        "content": [
+            [5, 6, 3, 6],
+            [4, 3, 1, 6],
+            [8, 2, 7, 2],
+            [4, 8, 2, 8],
+            [4, 1, 6, 2],
+            [3, 7, 8, 5],
+            [1, 5, 7, 3],
+            [5, 4, 1, 7],
+            [],
+            [],
+            [],
+            [],
+            [],
+            []
+        ],
+        "capacity": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+        "safes": [
+            [6, 1],
+            [7, 1],
+            [8, 2],
+            [9, 3],
+            [12, 2],
+            [13, 5]
+        ]
+    }
+}

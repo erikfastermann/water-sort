@@ -1698,7 +1698,7 @@ impl Pours {
 }
 
 #[derive(Serialize, Deserialize)]
-#[serde(deny_unknown_fields)]
+// TODO: Add deny_unknown_fields?
 pub struct StartingState {
     pub content: Vec<Vec<u8>>,
     pub capacity: Vec<u8>,

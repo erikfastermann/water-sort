@@ -1,0 +1,27 @@
+{
+    "description": "Two frozen ranges of different length, one of two and one of three bottles. Each range holds a bottle that is one item short, so filling it shatters the whole run.",
+    "layout": ["|1|2|3|4|5|", "|6|7|8|9|A|", "||B|C|D|E||"],
+    "starting_state": {
+        "content": [
+            [7, 8, 8, 6],
+            [1, 1, 1],
+            [9, 4, 4, 4],
+            [6, 10, 9, 4],
+            [10, 7, 9, 3],
+            [2, 2, 2],
+            [10, 3, 8, 6],
+            [5, 5, 5, 6],
+            [9, 3, 7, 10],
+            [1, 2, 5, 8],
+            [3, 7],
+            [],
+            [],
+            []
+        ],
+        "capacity": [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4],
+        "frozen_bottle_ranges": [
+            [2, 4],
+            [6, 9]
+        ]
+    }
+}

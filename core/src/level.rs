@@ -7,7 +7,19 @@ use crate::{
     state::{StartingState, State},
 };
 
-const LEVEL_DATA: &[&str] = &[include_str!("level_data/0000-example.json")];
+const LEVEL_DATA: &[&str] = &[
+    include_str!("level_data/0000-example.json"),
+    include_str!("level_data/0001-tall-and-small.json"),
+    include_str!("level_data/0002-in-the-dark.json"),
+    include_str!("level_data/0003-bolted-down.json"),
+    include_str!("level_data/0004-cork-and-filter.json"),
+    include_str!("level_data/0005-deep-freeze.json"),
+    include_str!("level_data/0006-behind-the-curtain.json"),
+    include_str!("level_data/0007-vault-run.json"),
+    include_str!("level_data/0008-key-and-door.json"),
+    include_str!("level_data/0009-the-column.json"),
+    include_str!("level_data/0010-everything-everywhere.json"),
+];
 
 const DESCRIPTION_MIN_LEN: usize = 100;
 const DESCRIPTION_MAX_LEN: usize = 200;
