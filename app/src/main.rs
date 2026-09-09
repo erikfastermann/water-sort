@@ -1,10 +1,13 @@
 mod art;
+mod board;
 mod dev;
 mod fx;
 mod geometry;
 mod raster;
 mod rng;
+mod session;
 mod theme;
+mod view;
 
 use bevy::camera::ScalingMode;
 use bevy::prelude::*;
@@ -36,6 +39,8 @@ fn main() {
         .add_plugins(dev::DevPlugin)
         .add_plugins(art::ArtPlugin)
         .add_plugins(fx::BackgroundPlugin)
+        .add_plugins(session::SessionPlugin)
+        .add_plugins(board::BoardPlugin)
         .add_systems(Startup, spawn_camera)
         .run();
 }

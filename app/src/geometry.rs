@@ -13,6 +13,8 @@ const LINE_STEP: u8 = CAP[1] - CAP[0];
 
 const _: () = assert!(CAP[1] - CAP[0] == CAP[2] - CAP[1]);
 
+pub const LINES: usize = Layout::LINES as usize;
+
 pub const COL_PITCH: f32 = BOTTLE_W + COL_GAP;
 pub const LINE_PITCH: f32 = LINE_STEP as f32 * ITEM_H;
 
@@ -65,10 +67,13 @@ impl BoardGeometry {
         }
     }
 
+    /// Core centres every layout line inside `REPR_LINE_LEN`, so a line holding
+    /// an odd number of columns fewer than the full grid sits on half-pitch
+    /// repr columns. The repr column is therefore a half-column index, not a
+    /// grid column times two.
     pub fn bottle_rect(&self, lines: Range<u8>, repr_column: u8) -> Rect {
-        debug_assert_eq!(repr_column % 2, 0);
         let span = lines.end - lines.start;
-        let left = self.origin.x + f32::from(repr_column / 2) * COL_PITCH;
+        let left = self.origin.x + f32::from(repr_column) * COL_PITCH * 0.5;
         let top = self.origin.y - f32::from(lines.start) * LINE_PITCH;
         Rect::new(left, top - outer_h(span), left + BOTTLE_W, top)
     }
@@ -144,6 +149,26 @@ mod tests {
 
         assert_eq!(bounds.center(), PLAY_CENTER);
         assert_eq!(bounds.width(), COL_PITCH + BOTTLE_W);
+    }
+
+    #[test]
+    fn shorter_lines_sit_on_half_pitch_columns() {
+        let slots = [
+            slot(0, 1, 4),
+            slot(0, 1, 6),
+            slot(1, 2, 3),
+            slot(1, 2, 5),
+            slot(1, 2, 7),
+        ];
+        let geometry = BoardGeometry::new(slots.iter().copied());
+        let wide = geometry.bottle_rect(slots[0].0, slots[0].1);
+        let narrow = geometry.bottle_rect(slots[2].0, slots[2].1);
+
+        assert_eq!(wide.min.x - narrow.min.x, COL_PITCH / 2.0);
+        assert_eq!(
+            geometry.bottle_rect(slots[3].0, slots[3].1).center().x,
+            PLAY_CENTER.x
+        );
     }
 
     #[test]

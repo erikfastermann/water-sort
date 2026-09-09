@@ -9,6 +9,11 @@ use crate::rng::Pcg32;
 
 const SUBSAMPLES: u32 = 4;
 
+/// Pixels further than this from the shape boundary are decided by a single
+/// centre sample, which is what keeps rasterizing the large glass sprites cheap.
+/// The margin is generous because a few of the sdf builders are approximate.
+const EDGE_BAND: f32 = 1.5;
+
 pub struct Raster {
     width: u32,
     height: u32,
@@ -39,24 +44,33 @@ impl Raster {
         let half = self.size() * 0.5;
         for y in 0..self.height {
             for x in 0..self.width {
-                let mut coverage = 0.0;
-                for sy in 0..SUBSAMPLES {
-                    for sx in 0..SUBSAMPLES {
-                        let point = Vec2::new(
-                            x as f32 + (sx as f32 + 0.5) * step,
-                            y as f32 + (sy as f32 + 0.5) * step,
-                        );
-                        if inside(point) < 0.0 {
-                            coverage += 1.0;
-                        }
-                    }
-                }
-                if coverage == 0.0 {
+                let center = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+                let distance = inside(center);
+                if distance > EDGE_BAND {
                     continue;
                 }
-                coverage /= (SUBSAMPLES * SUBSAMPLES) as f32;
 
-                let center = Vec2::new(x as f32 + 0.5, y as f32 + 0.5);
+                let coverage = if distance < -EDGE_BAND {
+                    1.0
+                } else {
+                    let mut hits = 0.0;
+                    for sy in 0..SUBSAMPLES {
+                        for sx in 0..SUBSAMPLES {
+                            let point = Vec2::new(
+                                x as f32 + (sx as f32 + 0.5) * step,
+                                y as f32 + (sy as f32 + 0.5) * step,
+                            );
+                            if inside(point) < 0.0 {
+                                hits += 1.0;
+                            }
+                        }
+                    }
+                    if hits == 0.0 {
+                        continue;
+                    }
+                    hits / (SUBSAMPLES * SUBSAMPLES) as f32
+                };
+
                 let source = shade((center - half) / half);
                 self.blend(x, y, source, coverage);
             }
@@ -154,5 +168,51 @@ pub fn radial_inverse(
         let distance = uv.length();
         let ramp = ((distance - inner) / (outer - inner)).clamp(0.0, 1.0);
         [1.0, 1.0, 1.0, alpha * ramp.powf(falloff)]
+    }
+}
+
+pub fn rounded_rect(bounds: Rect, radius: f32) -> impl Fn(Vec2) -> f32 {
+    let center = bounds.center();
+    let half = bounds.half_size() - Vec2::splat(radius);
+    move |point| {
+        let distance = (point - center).abs() - half;
+        distance.max(Vec2::ZERO).length() + distance.max_element().min(0.0) - radius
+    }
+}
+
+pub fn union(a: impl Fn(Vec2) -> f32, b: impl Fn(Vec2) -> f32) -> impl Fn(Vec2) -> f32 {
+    move |point| a(point).min(b(point))
+}
+
+pub fn smooth_union(
+    a: impl Fn(Vec2) -> f32,
+    b: impl Fn(Vec2) -> f32,
+    blend: f32,
+) -> impl Fn(Vec2) -> f32 {
+    move |point| {
+        let (a, b) = (a(point), b(point));
+        let weight = ((blend - (a - b).abs()) / blend).max(0.0);
+        a.min(b) - weight * weight * blend * 0.25
+    }
+}
+
+pub fn outline(sdf: impl Fn(Vec2) -> f32, width: f32) -> impl Fn(Vec2) -> f32 {
+    move |point| sdf(point).abs() - width * 0.5
+}
+
+pub fn scaled(sdf: impl Fn(Vec2) -> f32, scale: f32) -> impl Fn(Vec2) -> f32 {
+    move |point| sdf(point / scale) * scale
+}
+
+/// Shades in the raster's own pixel coordinates instead of normalized uv, so a
+/// shade can re-evaluate the sdf it is filling.
+pub fn in_pixels(size: Vec2, shade: impl Fn(Vec2) -> [f32; 4]) -> impl Fn(Vec2) -> [f32; 4] {
+    move |uv| shade((uv + Vec2::ONE) * size * 0.5)
+}
+
+pub fn v_ramp(top: f32, bottom: f32, alpha: f32) -> impl Fn(Vec2) -> [f32; 4] {
+    move |uv| {
+        let level = top.lerp(bottom, uv.y * 0.5 + 0.5);
+        [level, level, level, alpha]
     }
 }
