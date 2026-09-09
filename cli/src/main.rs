@@ -61,7 +61,7 @@ enum Command {
         #[arg(
             long,
             value_parser = clap::value_parser!(i8).range(0..=i64::from(MAX_SEARCH_DEPTH)),
-            default_value_t = 30,
+            default_value_t = 125,
         )]
         depth: i8,
 
@@ -83,7 +83,7 @@ enum Command {
         #[arg(
             long,
             value_parser = clap::value_parser!(i8).range(0..=i64::from(MAX_SEARCH_DEPTH)),
-            default_value_t = 125,
+            default_value_t = 30,
         )]
         depth: i8,
     },
