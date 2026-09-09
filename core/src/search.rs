@@ -46,10 +46,8 @@ impl DFS {
     }
 
     pub fn search(mut self) -> i8 {
-        let mut buffers = vec![
-            [Move::default(); BOTTLE_COUNT * BOTTLE_COUNT];
-            usize::try_from(self.depth).unwrap()
-        ];
+        let mut buffers =
+            vec![[Move::ZERO; BOTTLE_COUNT * BOTTLE_COUNT]; usize::try_from(self.depth).unwrap()];
         let result = self.search_recursive(&mut buffers);
         if result < 0 {
             -1
@@ -157,7 +155,7 @@ pub fn bfs(input_state: &State, depth: i8) -> Result<i8, Box<dyn Error>> {
         return Err("invalid depth".into());
     }
 
-    let mut moves_buffer = [Move::default(); BOTTLE_COUNT * BOTTLE_COUNT];
+    let mut moves_buffer = [Move::ZERO; BOTTLE_COUNT * BOTTLE_COUNT];
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back(SearchState::from(input_state));

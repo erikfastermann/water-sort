@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::{
     fmt::Debug,
     hash::Hash,
@@ -91,6 +93,14 @@ where
     pub fn count(&self) -> u32 {
         self.v.count()
     }
+
+    pub fn first(&self) -> Option<usize> {
+        self.v.first()
+    }
+
+    pub fn last(&self) -> Option<usize> {
+        self.v.last()
+    }
 }
 
 pub trait StorageMapper {
@@ -139,6 +149,8 @@ pub trait Storage: Debug + Clone + Copy + PartialEq + Eq + Hash {
     fn get_n(&self, offset: usize, bits: usize) -> u16;
     fn set_n(&mut self, offset: usize, bits: usize, value: u16);
     fn count(&self) -> u32;
+    fn first(&self) -> Option<usize>;
+    fn last(&self) -> Option<usize>;
 
     fn bitand(self, rhs: Self) -> Self;
     fn bitand_assign(&mut self, rhs: Self);
@@ -202,6 +214,16 @@ impl<const N: usize> Storage for [u32; N] {
 
     fn count(&self) -> u32 {
         self.iter().map(|n| n.count_ones()).sum()
+    }
+
+    fn first(&self) -> Option<usize> {
+        // TODO: More efficient implementation.
+        (0..N * 32).find(|x| self.has(*x))
+    }
+
+    fn last(&self) -> Option<usize> {
+        // TODO: More efficient implementation.
+        (0..N * 32).rev().find(|x| self.has(*x))
     }
 
     fn bitand(mut self, rhs: Self) -> Self {

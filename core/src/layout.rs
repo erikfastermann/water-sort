@@ -14,7 +14,7 @@ pub struct Layout([[u8; Self::REPR_LINE_LEN as usize]; Self::LINES as usize]);
 impl Layout {
     pub const LINES: u8 = 3;
 
-    const COLUMNS: u8 = 6;
+    pub const COLUMNS: u8 = 6;
 
     const TOTAL: u8 = Self::LINES * Self::COLUMNS;
 
@@ -88,7 +88,7 @@ impl Layout {
         self.validate_ranges(state, state.get_curtain_ranges())?;
 
         #[cfg(feature = "lock_groups")]
-        self.validate_ranges(state, state.get_lock_group_ranges())?;
+        self.validate_ranges(state, state.get_lock_group_ranges().map(|(_, range)| range))?;
 
         Ok(())
     }

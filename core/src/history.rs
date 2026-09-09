@@ -23,11 +23,13 @@ impl History {
         &self.state
     }
 
-    pub fn pour(&mut self, from: u8, to: u8) -> Result<(), Box<dyn Error>> {
-        let mov = self
-            .state
-            .moves()
-            .find(|mov| mov.from_bottle == from && mov.to_bottle == to);
+    pub fn pour(&mut self, from: u8, to: u8) -> Result<Move, Box<dyn Error>> {
+        let Some(mut moves) = self.state.moves() else {
+            return Err("already solved".into());
+        };
+
+        let mov = moves.find(|mov| mov.from_bottle() == from && mov.to_bottle() == to);
+        drop(moves);
 
         let Some(mov) = mov else {
             return Err("move not allowed".into());
@@ -38,7 +40,7 @@ impl History {
         self.moves.push(mov);
         self.length = self.moves.len();
 
-        Ok(())
+        Ok(mov)
     }
 
     pub fn can_previous(&self) -> bool {
