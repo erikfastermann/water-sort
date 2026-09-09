@@ -28,7 +28,7 @@ impl Level {
             return Ok(None);
         };
 
-        let data: LevelData = serde_json::from_str(*data_raw)?;
+        let data: LevelData = serde_json::from_str(data_raw)?;
         Ok(Some(Level::try_from(data)?))
     }
 }

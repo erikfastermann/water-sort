@@ -43,12 +43,12 @@ impl History {
         Ok(mov)
     }
 
-    pub fn can_previous(&self) -> bool {
+    pub fn can_rewind(&self) -> bool {
         self.length > 0
     }
 
-    pub fn previous(&mut self) -> bool {
-        if !self.can_previous() {
+    pub fn rewind(&mut self) -> bool {
+        if !self.can_rewind() {
             return false;
         }
 
@@ -58,12 +58,12 @@ impl History {
         true
     }
 
-    pub fn can_next(&self) -> bool {
+    pub fn can_forward(&self) -> bool {
         self.length < self.moves.len()
     }
 
-    pub fn next(&mut self) -> bool {
-        if !self.can_next() {
+    pub fn forward(&mut self) -> bool {
+        if !self.can_forward() {
             return false;
         }
 

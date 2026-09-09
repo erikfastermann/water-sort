@@ -26,7 +26,7 @@ impl DFS {
         visited_cache_bytes: usize,
         find_first: bool,
     ) -> Result<Self, Box<dyn Error>> {
-        if depth < 0 || depth > MAX_SEARCH_DEPTH {
+        if !(0..=MAX_SEARCH_DEPTH).contains(&depth) {
             return Err("invalid depth".into());
         }
 
@@ -151,7 +151,7 @@ impl DFS {
 }
 
 pub fn bfs(input_state: &State, depth: i8) -> Result<i8, Box<dyn Error>> {
-    if depth < 0 || depth > MAX_SEARCH_DEPTH {
+    if !(0..=MAX_SEARCH_DEPTH).contains(&depth) {
         return Err("invalid depth".into());
     }
 
@@ -277,7 +277,7 @@ impl From<&State> for SearchState {
 }
 
 impl SearchState {
-    fn to_state_unchecked(&self, base: &State) -> State {
+    fn to_state_unchecked(self, base: &State) -> State {
         State {
             bottle_count: base.bottle_count,
             content: self.content,

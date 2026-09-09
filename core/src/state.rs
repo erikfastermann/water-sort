@@ -243,8 +243,6 @@ impl State {
     }
 
     pub(crate) fn fill_moves(&self, buffer: &mut [Move; BOTTLE_COUNT * BOTTLE_COUNT]) -> usize {
-        debug_assert!(usize::try_from(u16::MAX).is_ok());
-
         let mut index = 0;
 
         for from in 1..self.bottle_count + 1 {
@@ -1176,7 +1174,7 @@ impl TryFrom<&StartingState> for State {
         if value.content.iter().any(|v| v.len() > ITEM_COUNT) {
             return Err("bottle item count too large".into());
         }
-        if value.capacity.iter().any(|v| *v == 0) {
+        if value.capacity.contains(&0) {
             return Err("capacity zero".into());
         }
         if value.capacity.iter().any(|v| usize::from(*v) > ITEM_COUNT) {
@@ -1428,11 +1426,7 @@ impl TryFrom<&StartingState> for State {
 }
 
 pub fn from_index(index: u16) -> (u8, u8) {
-    debug_assert!(
-        usize::try_from(index)
-            .ok()
-            .is_some_and(|n| n < BOTTLE_COUNT * ITEM_COUNT)
-    );
+    debug_assert!(usize::from(index) < BOTTLE_COUNT * ITEM_COUNT);
     let bottle = index as usize / ITEM_COUNT;
     let item = index as usize % ITEM_COUNT;
     debug_assert!(u8::try_from(bottle).is_ok());
