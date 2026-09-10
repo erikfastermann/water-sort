@@ -18,7 +18,7 @@ impl Plugin for BackgroundPlugin {
             .insert_resource(PopClock(theme::STAR_POP_INTERVAL))
             .insert_resource(StarRng(Pcg32::new(STAR_SEED, 1)))
             .add_systems(Startup, spawn_background)
-            .add_systems(Update, (fit_viewport, animate_stars));
+            .add_systems(Update, (fit_viewport, animate_stars, drive_particles));
     }
 }
 
@@ -31,6 +31,22 @@ struct PopClock(f32);
 #[derive(Component)]
 struct FitViewport;
 
+/// Invisible full-viewport pick target. Clicks that miss every bottle land
+/// here, which is what deselects and what cancels a running animation.
+#[derive(Component)]
+pub struct Backdrop;
+
+/// Incidental debris. Never part of [`crate::anim::Flow`]; cancelling an
+/// animation simply despawns whatever is still in flight.
+#[derive(Component)]
+pub struct Particle {
+    pub velocity: Vec2,
+    pub gravity: f32,
+    pub spin: f32,
+    pub life: f32,
+    pub max_life: f32,
+}
+
 #[derive(Component)]
 struct Star {
     unit: Vec2,
@@ -41,6 +57,18 @@ struct Star {
 }
 
 fn spawn_background(mut commands: Commands, art: Res<Art>, mut rng: ResMut<StarRng>) {
+    commands.spawn((
+        Backdrop,
+        Sprite {
+            color: Color::NONE,
+            custom_size: Some(Vec2::new(theme::CANVAS_W, theme::CANVAS_H)),
+            ..default()
+        },
+        Transform::from_xyz(0.0, 0.0, theme::Z_BACKGROUND),
+        FitViewport,
+        Pickable::default(),
+    ));
+
     commands.spawn((
         Sprite {
             image: art.glow.clone(),
@@ -150,5 +178,29 @@ fn animate_stars(
         sprite.custom_size = Some(Vec2::splat(star.size * scale));
         transform.translation.x = area.center().x + star.unit.x * area.width();
         transform.translation.y = area.center().y + star.unit.y * area.height();
+    }
+}
+
+fn drive_particles(
+    time: Res<Time>,
+    mut commands: Commands,
+    mut particles: Query<(Entity, &mut Particle, &mut Transform, &mut Sprite)>,
+) {
+    let delta = time.delta_secs();
+    for (entity, mut particle, mut transform, mut sprite) in &mut particles {
+        particle.life -= delta;
+        if particle.life <= 0.0 {
+            commands.entity(entity).despawn();
+            continue;
+        }
+
+        particle.velocity.y += particle.gravity * delta;
+        let step = particle.velocity * delta;
+        transform.translation.x += step.x;
+        transform.translation.y += step.y;
+        transform.rotate_z(particle.spin * delta);
+
+        let left = particle.life / particle.max_life;
+        sprite.color = sprite.color.with_alpha(left.min(1.0));
     }
 }

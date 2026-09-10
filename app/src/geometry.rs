@@ -5,7 +5,10 @@ use std::range::Range;
 use bevy::prelude::*;
 use water_sort_core::layout::Layout;
 
-use crate::theme::{BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, GLASS_WALL, ITEM_H, NECK_H};
+use crate::theme::{
+    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, GLASS_WALL, INTRO_ENTRY_MARGIN, INTRO_STAGGER,
+    ITEM_H, NECK_H,
+};
 
 const CAP: [u8; Layout::LINES as usize] = Layout::MAX_CAPACITY;
 
@@ -45,7 +48,14 @@ pub const fn outer_h(lines: u8) -> f32 {
 
 pub const MOUTH_INSET: f32 = 6.0;
 
-#[derive(Clone, Copy, Debug, Default)]
+/// How far off screen a bottle starts its intro slide.
+pub const INTRO_ENTRY: f32 = BOARD_W + INTRO_ENTRY_MARGIN;
+
+/// Stagger of the last possible repr column, so the intro phase knows when the
+/// slowest bottle has landed.
+pub const MAX_INTRO_DELAY: f32 = (Layout::REPR_LINE_LEN - 1) as f32 * INTRO_STAGGER;
+
+#[derive(Clone, Copy, Debug, Default, Resource)]
 pub struct BoardGeometry {
     origin: Vec2,
 }

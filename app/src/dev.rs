@@ -25,6 +25,10 @@ mod native {
         render::view::screenshot::{Screenshot, save_to_disk},
     };
 
+    use crate::board::HitTarget;
+    use crate::fx::Backdrop;
+    use crate::input::PendingClick;
+
     const DIR_VAR: &str = "WATER_SORT_DEV_DIR";
 
     pub fn build(app: &mut App) {
@@ -43,7 +47,7 @@ mod native {
             dir,
             offset: 0,
         })
-        .add_systems(Update, poll_commands);
+        .add_systems(Update, poll_commands.before(crate::anim::Play::Input));
     }
 
     #[derive(Resource)]
@@ -57,6 +61,9 @@ mod native {
         mut channel: ResMut<DevChannel>,
         mut commands: Commands,
         mut exit: MessageWriter<AppExit>,
+        mut pending: ResMut<PendingClick>,
+        targets: Query<(Entity, &HitTarget)>,
+        backdrop: Query<Entity, With<Backdrop>>,
         mut shots: Local<usize>,
     ) {
         let Ok(mut file) = File::open(&channel.commands) else {
@@ -94,6 +101,20 @@ mod native {
                     commands
                         .spawn(Screenshot::primary_window())
                         .observe(save_to_disk(path));
+                }
+                Some("tap") => {
+                    let argument = words.next().unwrap_or("bg");
+                    let entity = match argument.parse::<u8>() {
+                        Ok(bottle) => targets
+                            .iter()
+                            .find(|(_, target)| target.id == bottle)
+                            .map(|(entity, _)| entity),
+                        Err(_) => backdrop.iter().next(),
+                    };
+                    match entity {
+                        Some(entity) => pending.set(entity),
+                        None => warn!("no tap target for: {argument}"),
+                    }
                 }
                 Some("quit") => {
                     exit.write(AppExit::Success);

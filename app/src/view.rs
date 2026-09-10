@@ -4,7 +4,10 @@ use std::range::{Range, RangeInclusive};
 
 use bevy::prelude::*;
 use water_sort_core::layout::Layout;
-use water_sort_core::state::State;
+use water_sort_core::state::{BOTTLE_COUNT, Move as CoreMove, State};
+
+/// Upper bound for arrays indexed by bottle id; core reserves index 0.
+pub const MAX_BOTTLES: usize = BOTTLE_COUNT;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub struct ItemView {
@@ -125,4 +128,105 @@ fn bottle(state: &State, layout: &Layout, id: u8) -> BottleView {
         can_move_from: state.can_move_from(id),
         interactable: !behind_curtain && safe_counter == 0 && !locked && color_curtain.is_none(),
     }
+}
+
+/// Everything the animation needs to know about a pour that has already been
+/// applied to the state.
+#[derive(Clone, Debug)]
+pub struct MovePlan {
+    pub from: u8,
+    pub to: u8,
+    pub count: u8,
+    pub color: u8,
+    pub from_height_before: u8,
+    pub to_height_before: u8,
+    pub finalize: Option<u8>,
+    pub reveal_item: Option<(u8, u8)>,
+    pub unlock_item: Option<(u8, u8)>,
+    pub unplug: Option<u8>,
+    pub plug_toggled: Vec<u8>,
+    pub unfreeze: Option<RangeInclusive<u8>>,
+    pub curtains_lifted: Vec<u8>,
+    pub safe_ticks: Vec<u8>,
+    pub safes_opened: Vec<u8>,
+    pub key_used: Option<(u8, u8)>,
+    pub unlock_run: Option<RangeInclusive<u8>>,
+    pub color_curtains_lifted: Vec<u8>,
+}
+
+impl MovePlan {
+    pub fn build(mov: &CoreMove, before: &BoardView, after: &BoardView) -> Self {
+        let from = mov.from_bottle();
+        let to = mov.to_bottle();
+
+        let curtains_lifted = if mov.lift_curtains() {
+            changed(before, after, |before, after| {
+                before.behind_curtain && !after.behind_curtain
+            })
+        } else {
+            Vec::new()
+        };
+
+        let (safe_ticks, safes_opened) = if mov.decrement_safe_counters() {
+            let ticks = before
+                .bottles
+                .iter()
+                .filter(|bottle| mov.decrement_safe_counter(bottle.id))
+                .map(|bottle| bottle.id)
+                .collect();
+            let opened = changed(before, after, |before, after| {
+                before.safe_counter > 0 && after.safe_counter == 0
+            });
+            (ticks, opened)
+        } else {
+            (Vec::new(), Vec::new())
+        };
+
+        let color_curtains_lifted = if mov.lift_color_curtains() {
+            before
+                .bottles
+                .iter()
+                .filter(|bottle| mov.lift_color_curtain(bottle.id))
+                .map(|bottle| bottle.id)
+                .collect()
+        } else {
+            Vec::new()
+        };
+
+        Self {
+            from,
+            to,
+            count: mov.count(),
+            color: mov.color(),
+            from_height_before: before.get(from).items.len() as u8,
+            to_height_before: before.get(to).items.len() as u8,
+            finalize: mov.finalize_bottle(),
+            reveal_item: mov.show_item(),
+            unlock_item: mov.unlock_item(),
+            unplug: mov.unplug_bottle(),
+            plug_toggled: changed(before, after, |before, after| {
+                before.plugged != after.plugged
+            }),
+            unfreeze: mov.unfreeze_run(),
+            curtains_lifted,
+            safe_ticks,
+            safes_opened,
+            key_used: mov.remove_key(),
+            unlock_run: mov.unlock_run(),
+            color_curtains_lifted,
+        }
+    }
+}
+
+fn changed(
+    before: &BoardView,
+    after: &BoardView,
+    predicate: impl Fn(&BottleView, &BottleView) -> bool,
+) -> Vec<u8> {
+    before
+        .bottles
+        .iter()
+        .filter(|bottle| predicate(bottle, after.get(bottle.id)))
+        .map(|bottle| bottle.id)
+        .collect()
 }

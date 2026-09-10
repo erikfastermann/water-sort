@@ -6,7 +6,9 @@ use crate::raster::{
     smooth_union, solid, sparkle, union,
 };
 use crate::rng::Pcg32;
-use crate::theme::{BASE_H, BOTTLE_W, GLASS_WALL, ITEM_H, NECK_H};
+use crate::theme::{
+    BASE_H, BOTTLE_W, CORK_CAP_H, CORK_H, CORK_W, DROPLET_H, DROPLET_W, GLASS_WALL, ITEM_H, NECK_H,
+};
 
 const SCALE: u32 = 2;
 const NOISE_SEED: u64 = 0xA17_5EED;
@@ -39,6 +41,9 @@ pub struct Art {
     pub item_surface: Handle<Image>,
     pub glass_back: [Handle<Image>; LINES],
     pub glass_front: [Handle<Image>; LINES],
+    pub cork: Handle<Image>,
+    pub cork_cap: Handle<Image>,
+    pub droplet: Handle<Image>,
 }
 
 pub struct ArtPlugin;
@@ -64,6 +69,9 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         item_surface: item_surface(&mut images),
         glass_back: std::array::from_fn(|line| glass_back(&mut images, line as u8 + 1)),
         glass_front: std::array::from_fn(|line| glass_front(&mut images, line as u8 + 1)),
+        cork: cork(&mut images),
+        cork_cap: cork_cap(&mut images),
+        droplet: droplet(&mut images),
     });
 }
 
@@ -242,5 +250,42 @@ fn glass_front(images: &mut Assets<Image>, lines: u8) -> Handle<Image> {
             [1.0, 1.0, 1.0, STREAK_ALPHA * edge * head * (1.0 - fade)]
         }),
     );
+    raster.finish(images)
+}
+
+const CORK_RADIUS: f32 = 5.0;
+const CORK_INSET: f32 = 3.0;
+
+fn cork(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(CORK_W, CORK_H));
+    raster.shape(
+        scaled(
+            rounded_rect(
+                Rect::new(CORK_INSET, CORK_CAP_H * 0.5, CORK_W - CORK_INSET, CORK_H),
+                CORK_RADIUS,
+            ),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+fn cork_cap(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(CORK_W, CORK_CAP_H));
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::new(0.0, 0.0, CORK_W, CORK_CAP_H), CORK_RADIUS),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+fn droplet(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(DROPLET_W, DROPLET_H));
+    let size = raster.size();
+    raster.shape(ellipse(size * 0.5, size * 0.5), item_shade);
     raster.finish(images)
 }

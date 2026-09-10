@@ -1,5 +1,7 @@
 #![allow(dead_code)]
 
+use std::f32::consts::PI;
+
 use bevy::prelude::*;
 use water_sort_core::state::COLOR_COUNT;
 
@@ -53,6 +55,8 @@ pub const STAR: Color = Color::srgb_u8(0xFF, 0xFF, 0xFF);
 pub const GLASS_RIM: Color = Color::srgba_u8(0x7F, 0xB4, 0xE8, 140);
 pub const GLASS_INTERIOR: Color = Color::srgba_u8(0x0D, 0x13, 0x30, 89);
 pub const GLASS_HIGHLIGHT: Color = Color::srgba_u8(0xFF, 0xFF, 0xFF, 46);
+
+pub const SELECT_GLOW: Color = Color::srgb_u8(0xC3, 0x9B, 0xEE);
 
 pub const ITEM_HIDDEN: Color = Color::srgb_u8(0x0A, 0x0A, 0x12);
 pub const ITEM_QUESTION: Color = Color::srgb_u8(0xB9, 0xA7, 0xE8);
@@ -163,3 +167,63 @@ pub const Z_GLASS_BACK: f32 = 0.0;
 pub const Z_ITEM: f32 = 1.0;
 pub const Z_ITEM_SURFACE: f32 = 0.1;
 pub const Z_GLASS_FRONT: f32 = 2.0;
+pub const Z_BOTTLE: f32 = 0.0;
+pub const Z_HALO: f32 = -1.0;
+pub const Z_CORK: f32 = 3.0;
+pub const Z_STREAM: f32 = 15.0;
+pub const Z_POUR: f32 = 20.0;
+pub const Z_SWIRL: f32 = 25.0;
+
+pub const HALO_ALPHA: f32 = 0.45;
+pub const HALO_WIDTH: f32 = BOTTLE_W * 2.6;
+pub const HALO_MARGIN: f32 = 46.0;
+pub const HALO_FADE: f32 = 12.0;
+
+pub const LIFT_STIFFNESS: f32 = 420.0;
+pub const LIFT_DAMPING: f32 = 26.0;
+
+pub const FLUID_STIFFNESS: f32 = 90.0;
+pub const FLUID_DAMPING: f32 = 9.0;
+pub const FLUID_MAX_TILT: f32 = 0.22;
+/// A liquid surface counter-rotates against the glass to stay level, but a
+/// fully tipped bottle would push the cap ellipse outside the silhouette.
+pub const SURFACE_MAX_TILT: f32 = 0.32;
+pub const FLUID_DRIVE: f32 = 0.0016;
+pub const FLUID_DRIVE_MAX: f32 = 6.0;
+pub const FLUID_LAND_KICK: f32 = 3.5;
+pub const FLUID_POUR_KICK: f32 = 1.8;
+
+pub const POUR_ARC: f32 = 46.0;
+pub const POUR_HOVER_X: f32 = BOTTLE_W * 0.55;
+pub const POUR_HOVER_Y: f32 = NECK_H * 1.4;
+pub const POUR_ANGLE_FULL: f32 = 60.0 * PI / 180.0;
+pub const POUR_ANGLE_EMPTY: f32 = 100.0 * PI / 180.0;
+
+pub const STREAM_DROPLETS: usize = 10;
+pub const STREAM_DROPLET_W: f32 = 11.0;
+pub const STREAM_DROPLET_H: f32 = 15.0;
+pub const STREAM_CYCLE: f32 = 0.16;
+pub const STREAM_ARC: f32 = 14.0;
+
+pub const SPLASH_COUNT: usize = 4;
+pub const SPLASH_LIFE: f32 = 0.28;
+pub const SPLASH_SPEED: f32 = 130.0;
+pub const SPLASH_GRAVITY: f32 = -900.0;
+
+pub const SWIRL_STARS: usize = 14;
+pub const SWIRL_TURNS: f32 = 1.6;
+pub const SWIRL_RADIUS: f32 = BOTTLE_W * 0.32;
+pub const SWIRL_STAGGER: f32 = 0.02;
+pub const SWIRL_SIZE: f32 = 26.0;
+pub const SWIRL_TINT: f32 = 0.8;
+
+pub const CORK_W: f32 = 34.0;
+pub const CORK_H: f32 = 26.0;
+pub const CORK_CAP_H: f32 = 10.0;
+pub const CORK_RISE: f32 = 30.0;
+pub const CORK_SQUASH: f32 = 1.15;
+
+pub const DROPLET_W: f32 = 12.0;
+pub const DROPLET_H: f32 = 16.0;
+
+pub const INTRO_ENTRY_MARGIN: f32 = 120.0;

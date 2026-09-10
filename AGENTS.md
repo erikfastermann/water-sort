@@ -58,6 +58,8 @@ A native build with WATER_SORT_DEV_DIR set polls <dir>/commands and runs every
 appended line:
 
     shot [name]   save a screenshot to <dir>, default shot-<n>.png
+    tap <bottle>  click the bottle with that id
+    tap bg        click the background, deselecting or cancelling
     quit          exit the app
 
 Append one command at a time and wait a moment between them. Screenshots are

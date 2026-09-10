@@ -1,8 +1,10 @@
+mod anim;
 mod art;
 mod board;
 mod dev;
 mod fx;
 mod geometry;
+mod input;
 mod raster;
 mod rng;
 mod session;
@@ -40,7 +42,9 @@ fn main() {
         .add_plugins(art::ArtPlugin)
         .add_plugins(fx::BackgroundPlugin)
         .add_plugins(session::SessionPlugin)
+        .add_plugins(anim::AnimPlugin)
         .add_plugins(board::BoardPlugin)
+        .add_plugins(input::InputPlugin)
         .add_systems(Startup, spawn_camera)
         .run();
 }
