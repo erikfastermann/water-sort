@@ -6,8 +6,8 @@ use bevy::prelude::*;
 use water_sort_core::layout::Layout;
 
 use crate::theme::{
-    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, GLASS_WALL, INTRO_ENTRY_MARGIN, INTRO_STAGGER,
-    ITEM_H, NECK_H,
+    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, CURTAIN_MARGIN, GLASS_WALL, ICE_MARGIN,
+    INTRO_ENTRY_MARGIN, INTRO_STAGGER, ITEM_H, NECK_H, SAFE_MARGIN,
 };
 
 const CAP: [u8; Layout::LINES as usize] = Layout::MAX_CAPACITY;
@@ -49,6 +49,15 @@ pub const fn outer_h(lines: u8) -> f32 {
 }
 
 pub const MOUTH_INSET: f32 = 6.0;
+
+/// Core validates frozen, curtain and lock ranges to be single line, so every
+/// range decoration is exactly this tall.
+pub const ICE_H: f32 = outer_h(1) + 2.0 * ICE_MARGIN;
+pub const CURTAIN_H: f32 = outer_h(1) + 2.0 * CURTAIN_MARGIN;
+
+/// The smallest door a safe can need, and therefore the size its art is drawn
+/// at; every real door is at least this large in both axes.
+pub const SAFE_MIN: Vec2 = Vec2::new(BOTTLE_W + 2.0 * SAFE_MARGIN, outer_h(1) + 2.0 * SAFE_MARGIN);
 
 /// How far off screen a bottle starts its intro slide.
 pub const INTRO_ENTRY: f32 = BOARD_W + INTRO_ENTRY_MARGIN;

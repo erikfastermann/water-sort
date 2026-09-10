@@ -214,6 +214,18 @@ fn effects_time(plan: &MovePlan) -> f32 {
     if !plan.plug_toggled.is_empty() || plan.unplug.is_some() {
         longest = longest.max(theme::PLUG_TOGGLE);
     }
+    if plan.unfreeze.is_some() {
+        longest = longest.max(theme::RANGE_DELAY + theme::ICE_SHATTER);
+    }
+    if !plan.curtains_lifted.is_empty() {
+        longest = longest.max(theme::RANGE_DELAY + theme::CURTAIN_LIFT);
+    }
+    if !plan.safe_ticks.is_empty() {
+        longest = longest.max(theme::RANGE_DELAY + theme::SAFE_TICK);
+    }
+    if !plan.safes_opened.is_empty() {
+        longest = longest.max(theme::RANGE_DELAY + theme::SAFE_OPEN);
+    }
     longest
 }
 

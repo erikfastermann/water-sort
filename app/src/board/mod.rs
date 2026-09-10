@@ -1,4 +1,5 @@
 mod bottle;
+mod decor;
 mod feature;
 
 use bevy::ecs::system::SystemParam;
@@ -17,6 +18,7 @@ use crate::view::BoardView;
 pub use bottle::{Fluids, HitTarget};
 
 const SHAKE_SEED: u64 = 0x5AFE_5EED;
+const DECOR_SEED: u64 = 0x1CE_5EED;
 
 pub struct BoardPlugin;
 
@@ -30,6 +32,7 @@ impl Plugin for BoardPlugin {
 
         app.insert_resource(geometry)
             .insert_resource(ShakeRng(Pcg32::new(SHAKE_SEED, 1)))
+            .insert_resource(decor::DecorRng(Pcg32::new(DECOR_SEED, 1)))
             .init_resource::<Fluids>()
             .add_systems(Startup, spawn_board)
             .add_systems(
@@ -54,6 +57,10 @@ impl Plugin for BoardPlugin {
                         feature::sync_bands,
                         feature::sync_lids,
                         feature::sync_plugs,
+                        decor::sync_ice,
+                        decor::sync_curtains,
+                        decor::sync_safes,
+                        decor::sync_safe_counters,
                     ),
                 )
                     .chain()
@@ -86,9 +93,10 @@ fn build(commands: &mut Commands, art: &Art, view: &BoardView, geometry: &BoardG
         ))
         .id();
 
-    for view in &view.bottles {
-        bottle::spawn(commands, root, art, geometry, view);
+    for bottle in &view.bottles {
+        bottle::spawn(commands, root, art, geometry, bottle);
     }
+    decor::spawn(commands, root, art, geometry, view);
 }
 
 /// Everything a level change or a history step touches.

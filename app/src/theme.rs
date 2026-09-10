@@ -74,8 +74,10 @@ pub const METAL_BAND: Color = Color::srgb_u8(0x93, 0xA3, 0xB5);
 pub const ROCK_LIGHT: Color = Color::srgb_u8(0xD8, 0xD2, 0xC4);
 pub const ROCK_SHADE: Color = Color::srgb_u8(0xA7, 0x9E, 0x8C);
 
-pub const ICE_FILL: Color = Color::srgba_u8(0x6F, 0xD8, 0xFF, 140);
+pub const ICE_FILL: Color = Color::srgba_u8(0x7C, 0xE4, 0xFF, 235);
 pub const ICE_EDGE: Color = Color::srgb_u8(0xC9, 0xF2, 0xFF);
+pub const ICE_BASE: Color = Color::srgba_u8(0x5C, 0xD2, 0xFF, 245);
+pub const ICE_FLASH: Color = Color::srgb_u8(0xFF, 0xFF, 0xFF);
 
 pub const CURTAIN_CLOTH: Color = Color::srgb_u8(0xD6, 0x15, 0x4F);
 pub const CURTAIN_TRIM: Color = Color::srgb_u8(0xF0, 0xB4, 0x29);
@@ -83,11 +85,12 @@ pub const CURTAIN_ROLL: Color = Color::srgb_u8(0xB8, 0x10, 0x3F);
 pub const COLOR_CURTAIN: Color = Color::srgb_u8(0xF3, 0xC7, 0xC4);
 pub const COLOR_CURTAIN_SHADE: Color = Color::srgb_u8(0xD8, 0x9E, 0x9C);
 
-pub const SAFE_DOOR: Color = Color::srgb_u8(0x1E, 0x52, 0xC4);
+pub const SAFE_DOOR: Color = Color::srgb_u8(0x13, 0x30, 0x7C);
 pub const SAFE_PLATE: Color = Color::srgb_u8(0x2D, 0x6B, 0xE0);
 pub const SAFE_BOLT: Color = Color::srgb_u8(0xDC, 0x42, 0x36);
 pub const SAFE_DIAL: Color = Color::srgb_u8(0xAB, 0xCF, 0xF6);
 pub const SAFE_TEXT: Color = Color::srgb_u8(0xFF, 0xFF, 0xFF);
+pub const SAFE_SHADOW: Color = Color::srgb_u8(0x10, 0x2A, 0x66);
 
 pub const WOOD_PLANK: Color = Color::srgb_u8(0xE8, 0xA9, 0x60);
 pub const WOOD_SHADE: Color = Color::srgb_u8(0xCE, 0x8C, 0x43);
@@ -144,6 +147,9 @@ pub const COMPLETE_DIM: f32 = 0.25;
 pub const COMPLETE_TEXT: f32 = 0.45;
 pub const CONFETTI_LIFE: f32 = 2.2;
 pub const NAV_SHAKE: f32 = 0.28;
+/// Range decorations resolve while the finalize swirl is still climbing, so the
+/// ice, the curtain and the safes react to the cork rather than to the pour.
+pub const RANGE_DELAY: f32 = FINALIZE_SWIRL;
 
 pub const STAR_COUNT: usize = 40;
 pub const STAR_SIZE_MIN: f32 = 7.0;
@@ -171,6 +177,17 @@ pub const Z_ITEM_LID: f32 = 0.3;
 pub const Z_ITEM_QUESTION: f32 = 0.4;
 pub const Z_GLASS_FRONT: f32 = 2.0;
 pub const Z_ROCKS: f32 = 2.4;
+pub const Z_ICE_BASE: f32 = 3.2;
+pub const Z_ICE_FROST: f32 = 3.4;
+pub const Z_ICE_FRAME: f32 = 3.5;
+pub const Z_CURTAIN: f32 = 5.0;
+pub const Z_CURTAIN_TRIM: f32 = 5.1;
+pub const Z_CURTAIN_ROLL: f32 = 5.2;
+pub const Z_SAFE: f32 = 6.0;
+pub const Z_SAFE_FACE: f32 = 0.1;
+pub const Z_SAFE_CROSS: f32 = 0.2;
+pub const Z_SAFE_DIAL: f32 = 0.3;
+pub const Z_SAFE_TEXT: f32 = 0.4;
 pub const Z_ROPE: f32 = 2.6;
 pub const Z_PLUG: f32 = 2.8;
 pub const Z_BOTTLE: f32 = 0.0;
@@ -309,3 +326,37 @@ pub const CONFETTI_GRAVITY: f32 = -300.0;
 pub const CONFETTI_SPIN: f32 = 6.0;
 
 pub const FLUID_NAV_KICK: f32 = 2.5;
+
+pub const ICE_MARGIN: f32 = COL_GAP / 2.0;
+pub const ICE_BASE_H: f32 = 50.0;
+pub const ICE_CROWN_H: f32 = 38.0;
+pub const ICE_FRAME_W: f32 = 4.0;
+pub const ICE_FRAME_ALPHA: f32 = 0.5;
+pub const ICE_BURST: f32 = 0.09;
+pub const ICE_FLASH_TIME: f32 = 0.16;
+pub const ICE_SHARDS: usize = 16;
+pub const ICE_SHARD_W: f32 = 13.0;
+pub const ICE_SHARD_H: f32 = 16.0;
+pub const ICE_SHARD_SPEED: f32 = 200.0;
+pub const ICE_SHARD_GRAVITY: f32 = -520.0;
+pub const ICE_SHARD_SPIN: f32 = 7.0;
+pub const ICE_SHARD_LIFE: f32 = 0.7;
+
+pub const CURTAIN_MARGIN: f32 = COL_GAP / 2.0;
+pub const CURTAIN_ROLL_W: f32 = 27.0;
+pub const CURTAIN_TRIM_H: f32 = 11.0;
+pub const CURTAIN_KNOB: f32 = 18.0;
+pub const CURTAIN_WAVE: f32 = 0.06;
+pub const CURTAIN_WAVE_HZ: f32 = 2.5;
+
+pub const SAFE_MARGIN: f32 = 5.0;
+pub const SAFE_RADIUS: f32 = 20.0;
+pub const SAFE_BORDER: f32 = 8.0;
+pub const SAFE_CROSS_D: f32 = 74.0;
+pub const SAFE_DIAL_D: f32 = 44.0;
+pub const SAFE_HUB_D: f32 = 32.0;
+pub const SAFE_FONT: f32 = 26.0;
+pub const SAFE_SPIN: f32 = -120.0 * PI / 180.0;
+pub const SAFE_POP: f32 = 0.34;
+pub const SAFE_SWING: f32 = -13.0 * PI / 180.0;
+pub const SAFE_SHUT: f32 = 0.94;

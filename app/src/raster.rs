@@ -247,3 +247,15 @@ pub fn triangle(a: Vec2, b: Vec2, c: Vec2) -> impl Fn(Vec2) -> f32 {
         -squared.sqrt() * side.signum()
     }
 }
+
+pub fn rotated(sdf: impl Fn(Vec2) -> f32, center: Vec2, angle: f32) -> impl Fn(Vec2) -> f32 {
+    let (sin, cos) = angle.sin_cos();
+    move |point| {
+        let offset = point - center;
+        sdf(center
+            + Vec2::new(
+                cos * offset.x + sin * offset.y,
+                cos * offset.y - sin * offset.x,
+            ))
+    }
+}

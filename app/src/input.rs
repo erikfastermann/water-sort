@@ -152,71 +152,11 @@ fn pour(session: &mut Session, view: &mut BoardView, flow: &mut Flow, from: u8, 
 
 #[cfg(test)]
 mod tests {
-    use std::collections::HashSet;
-
     use super::{Action, decide};
     use crate::anim::Flow;
     use crate::session::Session;
-    use crate::view::{BoardView, MovePlan};
-
-    fn fingerprint(view: &BoardView) -> Vec<Vec<u8>> {
-        view.bottles
-            .iter()
-            .map(|bottle| bottle.items.iter().map(|item| item.color).collect())
-            .collect()
-    }
-
-    fn legal_pours(session: &Session) -> Vec<(u8, u8)> {
-        let state = session.state();
-        let Some(pours) = state.pours() else {
-            return Vec::new();
-        };
-        let bottles: Vec<u8> = state.bottles().collect();
-        let mut out = Vec::new();
-        for from in bottles.iter().copied() {
-            for to in bottles.iter().copied() {
-                if from != to && pours.has(from, to) {
-                    out.push((from, to));
-                }
-            }
-        }
-        out
-    }
-
-    /// Depth-first walk over core's own move generator, using the view as the
-    /// visited fingerprint. Only used to obtain a full solution for the test.
-    fn solve(level: usize) -> Vec<(u8, u8)> {
-        let mut session = Session::new(level).expect("level exists");
-        let mut seen: HashSet<Vec<Vec<u8>>> = HashSet::new();
-        let mut path = Vec::new();
-        let mut stack = vec![legal_pours(&session).into_iter()];
-
-        while let Some(options) = stack.last_mut() {
-            if session.view().solved {
-                return path;
-            }
-            match options.next() {
-                None => {
-                    stack.pop();
-                    path.pop();
-                    session.history_mut().rewind();
-                }
-                Some((from, to)) => {
-                    if session.history_mut().pour(from, to).is_err() {
-                        continue;
-                    }
-                    if !seen.insert(fingerprint(&session.view())) {
-                        session.history_mut().rewind();
-                        continue;
-                    }
-                    path.push((from, to));
-                    stack.push(legal_pours(&session).into_iter());
-                }
-            }
-        }
-
-        panic!("level {level} has no solution");
-    }
+    use crate::solver::solve;
+    use crate::view::MovePlan;
 
     #[test]
     fn selection_follows_the_spec() {

@@ -9,6 +9,8 @@ mod input;
 mod raster;
 mod rng;
 mod session;
+#[cfg(test)]
+mod solver;
 mod storage;
 mod theme;
 mod view;

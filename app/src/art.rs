@@ -1,19 +1,22 @@
-use std::f32::consts::PI;
+use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
+use bevy::sprite::{BorderRect, SliceScaleMode, SpriteImageMode, TextureSlicer};
 
-use crate::geometry::{LINES, outer_h};
+use crate::geometry::{COL_PITCH, CURTAIN_H, LINES, SAFE_MIN, outer_h};
 use crate::raster::{
     Raster, ellipse, half_plane, in_pixels, intersect, outline, radial, radial_inverse, rect, ring,
-    rounded_rect, scaled, smooth_union, solid, sparkle, triangle, union,
+    rotated, rounded_rect, scaled, smooth_union, solid, sparkle, triangle, union,
 };
 use crate::rng::Pcg32;
 use crate::theme::{
     BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H,
-    CORK_H, CORK_W, DROPLET_H, DROPLET_W, GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER,
-    HEADER_PILL_RADIUS, ITEM_H, LID_H, LID_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE,
-    NAV_PANEL, NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER,
-    NEXT_PILL_RADIUS, PLUG_H, PLUG_W, QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W,
+    CORK_H, CORK_W, CURTAIN_KNOB, CURTAIN_ROLL_W, DROPLET_H, DROPLET_W, GLASS_WALL, HEADER_PILL,
+    HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE_H, ICE_CROWN_H, ICE_SHARD_H, ICE_SHARD_W,
+    ITEM_H, LID_H, LID_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL,
+    NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS,
+    PLUG_H, PLUG_W, QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W, SAFE_BORDER,
+    SAFE_CROSS_D, SAFE_DIAL_D, SAFE_HUB_D, SAFE_RADIUS,
 };
 
 const SCALE: u32 = 2;
@@ -56,6 +59,16 @@ pub struct Art {
     pub rope: Handle<Image>,
     pub plug: Handle<Image>,
     pub droplet: Handle<Image>,
+    pub ice_base: Handle<Image>,
+    pub ice_crown: Handle<Image>,
+    pub ice_shard: Handle<Image>,
+    pub curtain_cloth: Handle<Image>,
+    pub curtain_roll: Handle<Image>,
+    pub knob: Handle<Image>,
+    pub safe_door: Plate,
+    pub safe_cross: Handle<Image>,
+    pub safe_dial: Handle<Image>,
+    pub safe_hub: Handle<Image>,
     pub header_pill: Plate,
     pub nav_panel: Plate,
     pub next_pill: Plate,
@@ -112,6 +125,16 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         rope: rope(&mut images),
         plug: plug(&mut images),
         droplet: droplet(&mut images),
+        ice_base: ice_base(&mut images),
+        ice_crown: ice_crown(&mut images),
+        ice_shard: ice_shard(&mut images),
+        curtain_cloth: curtain_cloth(&mut images),
+        curtain_roll: curtain_roll(&mut images),
+        knob: knob(&mut images),
+        safe_door: plate(&mut images, SAFE_MIN, SAFE_RADIUS, SAFE_BORDER),
+        safe_cross: safe_cross(&mut images),
+        safe_dial: safe_dial(&mut images),
+        safe_hub: rounded(&mut images, Vec2::splat(SAFE_HUB_D), SAFE_HUB_D * 0.5),
         header_pill: plate(
             &mut images,
             HEADER_PILL,
@@ -129,6 +152,26 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
             CONFETTI_W * 0.35,
         ),
     });
+}
+
+/// Nine slicing keeps corners and borders at their authored size while the
+/// middle stretches, which is what lets one safe door cover any span. The
+/// corner cap is `1 / SCALE` because the art is rasterized at `SCALE` and drawn
+/// in design units.
+pub fn sliced(inset: f32) -> SpriteImageMode {
+    SpriteImageMode::Sliced(TextureSlicer {
+        border: BorderRect::all(inset * SCALE as f32),
+        center_scale_mode: SliceScaleMode::Stretch,
+        sides_scale_mode: SliceScaleMode::Stretch,
+        max_corner_scale: 1.0 / SCALE as f32,
+    })
+}
+
+/// The left `fraction` of a texture authored at `design` units, for a sprite
+/// that reveals its art instead of squashing it.
+pub fn crop(design: Vec2, fraction: f32) -> Rect {
+    let size = design * SCALE as f32;
+    Rect::new(0.0, 0.0, size.x * fraction, size.y)
 }
 
 fn raster(size: Vec2) -> Raster {
@@ -534,6 +577,201 @@ fn droplet(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(DROPLET_W, DROPLET_H));
     let size = raster.size();
     raster.shape(ellipse(size * 0.5, size * 0.5), item_shade);
+    raster.finish(images)
+}
+
+/// Facet bands that repeat exactly four times across a column, so neighbouring
+/// tiles of one range join without a seam.
+fn ice_bands(u: f32, v: f32) -> f32 {
+    let band = (u * 4.0 + v * 0.4).fract();
+    0.80 + 0.20 * (band * PI).sin().powf(0.6)
+}
+
+fn ice_base(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(COL_PITCH, ICE_BASE_H));
+    let size = raster.size();
+    let bounds = raster.bounds();
+    raster.shape(
+        rect(bounds),
+        in_pixels(size, |point| {
+            let point = point / SCALE as f32;
+            let (u, v) = (point.x / COL_PITCH, point.y / ICE_BASE_H);
+            let cap = (1.0 - v * 7.0).clamp(0.0, 1.0);
+            let level = (ice_bands(u, v) * (1.0 - 0.32 * v) + 0.42 * cap).clamp(0.0, 1.0);
+            [level, level, level, 1.0]
+        }),
+    );
+    raster.finish(images)
+}
+
+const ICICLES: [(f32, f32, f32); 4] = [
+    (0.16, 4.5, 18.0),
+    (0.38, 6.0, 29.0),
+    (0.62, 5.0, 22.0),
+    (0.85, 5.5, 33.0),
+];
+
+const ICE_RAIL: f32 = 11.0;
+
+/// The top edge of a frozen run: a solid rail with icicles hanging off it. The
+/// bottles below stay unobscured, which is what keeps their colours readable.
+fn ice_crown(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(COL_PITCH, ICE_CROWN_H));
+    let size = raster.size();
+    let teeth = std::array::from_fn::<_, { ICICLES.len() }, _>(|index| {
+        let (u, half, len) = ICICLES[index];
+        triangle(
+            Vec2::new(u * COL_PITCH - half, 0.0),
+            Vec2::new(u * COL_PITCH + half, 0.0),
+            Vec2::new(u * COL_PITCH, len),
+        )
+    });
+    raster.shape(
+        scaled(
+            move |point| {
+                teeth.iter().fold(
+                    rect(Rect::new(0.0, 0.0, COL_PITCH, ICE_RAIL))(point),
+                    |near, tooth| near.min(tooth(point)),
+                )
+            },
+            SCALE as f32,
+        ),
+        in_pixels(size, |point| {
+            let point = point / SCALE as f32;
+            let (u, v) = (point.x / COL_PITCH, point.y / ICE_CROWN_H);
+            let level = ice_bands(u, v);
+            [level, level, level, 1.0 - 0.35 * v]
+        }),
+    );
+    raster.finish(images)
+}
+
+fn ice_shard(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(ICE_SHARD_W, ICE_SHARD_H));
+    raster.shape(
+        scaled(
+            triangle(
+                Vec2::new(ICE_SHARD_W * 0.5, 0.0),
+                Vec2::new(0.0, ICE_SHARD_H),
+                Vec2::new(ICE_SHARD_W, ICE_SHARD_H * 0.72),
+            ),
+            SCALE as f32,
+        ),
+        |uv| {
+            let level = 0.70 + 0.30 * (1.0 - uv.y);
+            [level, level, level, 1.0]
+        },
+    );
+    raster.finish(images)
+}
+
+fn curtain_cloth(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(COL_PITCH, CURTAIN_H));
+    let size = raster.size();
+    let bounds = raster.bounds();
+    raster.shape(
+        rect(bounds),
+        in_pixels(size, |point| {
+            let point = point / SCALE as f32;
+            let (u, v) = (point.x / COL_PITCH, point.y / CURTAIN_H);
+            let fold = (u * 4.0 * TAU).sin() * 0.5 + 0.5;
+            let ends = 1.0 - 0.30 * (v * 2.0 - 1.0).abs().powi(3);
+            let level = ((0.58 + 0.42 * fold) * ends).clamp(0.0, 1.0);
+            [level, level, level, 1.0]
+        }),
+    );
+    raster.finish(images)
+}
+
+fn curtain_roll(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(CURTAIN_ROLL_W, CURTAIN_H));
+    raster.shape(
+        scaled(
+            rounded_rect(
+                Rect::new(0.0, 0.0, CURTAIN_ROLL_W, CURTAIN_H),
+                CURTAIN_ROLL_W * 0.5,
+            ),
+            SCALE as f32,
+        ),
+        |uv| {
+            let round = (1.0 - ((uv.x + 0.28) / 1.15).powi(2)).max(0.0);
+            let level = (0.42 + 0.68 * round).clamp(0.0, 1.0);
+            [level, level, level, 1.0]
+        },
+    );
+    raster.finish(images)
+}
+
+fn knob(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::splat(CURTAIN_KNOB));
+    let half = raster.size() * 0.5;
+    raster.shape(ellipse(half, half), |uv| {
+        let lit = (uv - Vec2::new(-0.35, -0.35)).length() / 1.7;
+        let level = (1.1 - lit).clamp(0.0, 1.0);
+        [level, level, level, 1.0]
+    });
+    raster.finish(images)
+}
+
+const SAFE_ARM: f32 = 0.10;
+const SAFE_ARM_REACH: f32 = 0.40;
+
+fn safe_cross(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::splat(SAFE_CROSS_D));
+    let center = Vec2::splat(SAFE_CROSS_D * 0.5);
+    let thickness = SAFE_CROSS_D * SAFE_ARM;
+    let reach = SAFE_CROSS_D * SAFE_ARM_REACH;
+    let bar = |horizontal: bool| {
+        let span = Vec2::new(
+            if horizontal { reach } else { thickness },
+            if horizontal { thickness } else { reach },
+        );
+        rounded_rect(Rect::from_center_size(center, span * 2.0), thickness * 0.9)
+    };
+    let arms = union(bar(true), bar(false));
+    let caps = std::array::from_fn::<_, 4, _>(|index| {
+        let angle = index as f32 * TAU / 4.0;
+        ellipse(
+            center + Vec2::new(angle.cos(), angle.sin()) * reach,
+            Vec2::splat(thickness * 1.35),
+        )
+    });
+    raster.shape(
+        scaled(
+            rotated(
+                move |point| {
+                    caps.iter()
+                        .fold(arms(point), |near, cap| near.min(cap(point)))
+                },
+                center,
+                PI * 0.25,
+            ),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+fn safe_dial(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::splat(SAFE_DIAL_D));
+    let center = Vec2::splat(SAFE_DIAL_D * 0.5);
+    let radius = SAFE_DIAL_D * 0.40;
+    let notch = SAFE_DIAL_D * 0.055;
+    let band = ring(center, radius, SAFE_DIAL_D * 0.10);
+    raster.shape(
+        scaled(
+            move |point| {
+                (0..8).fold(band(point), |near, index| {
+                    let angle = index as f32 * TAU / 8.0;
+                    let at = center + Vec2::new(angle.cos(), angle.sin()) * radius;
+                    near.min((point - at).length() - notch)
+                })
+            },
+            SCALE as f32,
+        ),
+        item_shade,
+    );
     raster.finish(images)
 }
 
