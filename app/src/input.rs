@@ -45,6 +45,14 @@ impl PendingClick {
     pub fn set(&mut self, entity: Entity) {
         self.0 = Some(entity);
     }
+
+    pub fn entity(&self) -> Option<Entity> {
+        self.0
+    }
+
+    pub fn take(&mut self) -> Option<Entity> {
+        self.0.take()
+    }
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -56,6 +64,9 @@ pub enum Action {
 }
 
 pub fn decide(selection: Option<u8>, clicked: Option<u8>, view: &BoardView) -> Action {
+    if view.solved || view.stuck {
+        return Action::Deselect;
+    }
     let Some(id) = clicked else {
         return Action::Deselect;
     };
@@ -84,13 +95,13 @@ fn record_click(mut click: On<Pointer<Click>>, mut pending: ResMut<PendingClick>
 
 /// The state a click can change, bundled so the handler stays readable.
 #[derive(SystemParam)]
-struct Game<'w> {
+pub struct Game<'w> {
     session: ResMut<'w, Session>,
     view: ResMut<'w, BoardView>,
     flow: ResMut<'w, Flow>,
 }
 
-fn handle_click(
+pub fn handle_click(
     mut commands: Commands,
     mut pending: ResMut<PendingClick>,
     mut selection: ResMut<Selection>,
@@ -98,7 +109,7 @@ fn handle_click(
     targets: Query<&HitTarget>,
     particles: Query<Entity, With<Particle>>,
 ) {
-    let Some(entity) = pending.0.take() else {
+    let Some(entity) = pending.take() else {
         return;
     };
 

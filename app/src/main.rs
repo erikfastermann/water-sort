@@ -4,10 +4,12 @@ mod board;
 mod dev;
 mod fx;
 mod geometry;
+mod hud;
 mod input;
 mod raster;
 mod rng;
 mod session;
+mod storage;
 mod theme;
 mod view;
 
@@ -45,6 +47,7 @@ fn main() {
         .add_plugins(anim::AnimPlugin)
         .add_plugins(board::BoardPlugin)
         .add_plugins(input::InputPlugin)
+        .add_plugins(hud::HudPlugin)
         .add_systems(Startup, spawn_camera)
         .run();
 }

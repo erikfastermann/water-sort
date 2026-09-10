@@ -76,6 +76,11 @@ impl Flow {
         !matches!(self.kind, FlowKind::Idle)
     }
 
+    pub fn restart_intro(&mut self) {
+        self.kind = FlowKind::Intro;
+        self.clock = 0.0;
+    }
+
     pub fn start_pour(&mut self, plan: MovePlan) {
         self.kind = FlowKind::Pour {
             plan,

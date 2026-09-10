@@ -21,12 +21,14 @@ mod native {
     };
 
     use bevy::{
+        ecs::system::SystemParam,
         prelude::*,
         render::view::screenshot::{Screenshot, save_to_disk},
     };
 
     use crate::board::HitTarget;
     use crate::fx::Backdrop;
+    use crate::hud::{NavAction, NavButton};
     use crate::input::PendingClick;
 
     const DIR_VAR: &str = "WATER_SORT_DEV_DIR";
@@ -50,6 +52,38 @@ mod native {
         .add_systems(Update, poll_commands.before(crate::anim::Play::Input));
     }
 
+    /// Everything `tap` can address.
+    #[derive(SystemParam)]
+    struct TapTargets<'w, 's> {
+        bottles: Query<'w, 's, (Entity, &'static HitTarget)>,
+        nav: Query<'w, 's, (Entity, &'static NavButton)>,
+        backdrop: Query<'w, 's, Entity, With<Backdrop>>,
+    }
+
+    impl TapTargets<'_, '_> {
+        fn resolve(&self, argument: &str) -> Option<Entity> {
+            let action = match argument {
+                "back" => Some(NavAction::Rewind),
+                "fwd" => Some(NavAction::Forward),
+                "next" => Some(NavAction::Next),
+                _ => None,
+            };
+            match (argument.parse::<u8>(), action) {
+                (Ok(bottle), _) => self
+                    .bottles
+                    .iter()
+                    .find(|(_, target)| target.id == bottle)
+                    .map(|(entity, _)| entity),
+                (_, Some(action)) => self
+                    .nav
+                    .iter()
+                    .find(|(_, button)| button.action == action)
+                    .map(|(entity, _)| entity),
+                _ => self.backdrop.iter().next(),
+            }
+        }
+    }
+
     #[derive(Resource)]
     struct DevChannel {
         dir: PathBuf,
@@ -62,8 +96,7 @@ mod native {
         mut commands: Commands,
         mut exit: MessageWriter<AppExit>,
         mut pending: ResMut<PendingClick>,
-        targets: Query<(Entity, &HitTarget)>,
-        backdrop: Query<Entity, With<Backdrop>>,
+        targets: TapTargets,
         mut shots: Local<usize>,
     ) {
         let Ok(mut file) = File::open(&channel.commands) else {
@@ -104,14 +137,7 @@ mod native {
                 }
                 Some("tap") => {
                     let argument = words.next().unwrap_or("bg");
-                    let entity = match argument.parse::<u8>() {
-                        Ok(bottle) => targets
-                            .iter()
-                            .find(|(_, target)| target.id == bottle)
-                            .map(|(entity, _)| entity),
-                        Err(_) => backdrop.iter().next(),
-                    };
-                    match entity {
+                    match targets.resolve(argument) {
                         Some(entity) => pending.set(entity),
                         None => warn!("no tap target for: {argument}"),
                     }

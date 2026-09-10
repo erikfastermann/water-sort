@@ -216,3 +216,34 @@ pub fn v_ramp(top: f32, bottom: f32, alpha: f32) -> impl Fn(Vec2) -> [f32; 4] {
         [level, level, level, alpha]
     }
 }
+
+pub fn intersect(a: impl Fn(Vec2) -> f32, b: impl Fn(Vec2) -> f32) -> impl Fn(Vec2) -> f32 {
+    move |point| a(point).max(b(point))
+}
+
+/// Inside is the side the `normal` points away from.
+pub fn half_plane(point: Vec2, normal: Vec2) -> impl Fn(Vec2) -> f32 {
+    move |sample| (sample - point).dot(normal)
+}
+
+pub fn ring(center: Vec2, radius: f32, width: f32) -> impl Fn(Vec2) -> f32 {
+    move |point| ((point - center).length() - radius).abs() - width * 0.5
+}
+
+pub fn triangle(a: Vec2, b: Vec2, c: Vec2) -> impl Fn(Vec2) -> f32 {
+    let edges = [b - a, c - b, a - c];
+    let winding = (edges[0].x * edges[2].y - edges[0].y * edges[2].x).signum();
+    move |point| {
+        let corners = [point - a, point - b, point - c];
+        let mut squared = f32::MAX;
+        let mut side = f32::MAX;
+        for index in 0..3 {
+            let edge = edges[index];
+            let corner = corners[index];
+            let leg = corner - edge * (corner.dot(edge) / edge.dot(edge)).clamp(0.0, 1.0);
+            squared = squared.min(leg.dot(leg));
+            side = side.min(winding * (corner.x * edge.y - corner.y * edge.x));
+        }
+        -squared.sqrt() * side.signum()
+    }
+}

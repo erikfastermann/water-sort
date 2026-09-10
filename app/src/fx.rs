@@ -28,8 +28,10 @@ struct StarRng(Pcg32);
 #[derive(Resource)]
 struct PopClock(f32);
 
+/// Sized and centred on the live camera area every frame, so a sprite covers
+/// the viewport at any aspect ratio.
 #[derive(Component)]
-struct FitViewport;
+pub struct FitViewport;
 
 /// Invisible full-viewport pick target. Clicks that miss every bottle land
 /// here, which is what deselects and what cancels a running animation.

@@ -2,12 +2,15 @@ use bevy::prelude::*;
 
 use crate::geometry::{LINES, outer_h};
 use crate::raster::{
-    Raster, ellipse, in_pixels, outline, radial, radial_inverse, rect, rounded_rect, scaled,
-    smooth_union, solid, sparkle, union,
+    Raster, ellipse, half_plane, in_pixels, intersect, outline, radial, radial_inverse, rect, ring,
+    rounded_rect, scaled, smooth_union, solid, sparkle, triangle, union,
 };
 use crate::rng::Pcg32;
 use crate::theme::{
-    BASE_H, BOTTLE_W, CORK_CAP_H, CORK_H, CORK_W, DROPLET_H, DROPLET_W, GLASS_WALL, ITEM_H, NECK_H,
+    BASE_H, BOTTLE_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H, CORK_H, CORK_W, DROPLET_H, DROPLET_W,
+    GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ITEM_H, NAV_BUTTON,
+    NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL, NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H,
+    NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS,
 };
 
 const SCALE: u32 = 2;
@@ -44,6 +47,28 @@ pub struct Art {
     pub cork: Handle<Image>,
     pub cork_cap: Handle<Image>,
     pub droplet: Handle<Image>,
+    pub header_pill: Plate,
+    pub nav_panel: Plate,
+    pub next_pill: Plate,
+    pub nav_button: Handle<Image>,
+    pub nav_undo: Handle<Image>,
+    pub nav_next: Handle<Image>,
+    pub confetti: Handle<Image>,
+}
+
+/// A bordered panel drawn as two stacked sprites, because one tinted grayscale
+/// texture cannot carry two colours.
+pub struct Plate {
+    pub outer: Handle<Image>,
+    pub inner: Handle<Image>,
+    pub size: Vec2,
+    pub border: f32,
+}
+
+impl Plate {
+    pub fn inner_size(&self) -> Vec2 {
+        self.size - Vec2::splat(2.0 * self.border)
+    }
 }
 
 pub struct ArtPlugin;
@@ -72,6 +97,22 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         cork: cork(&mut images),
         cork_cap: cork_cap(&mut images),
         droplet: droplet(&mut images),
+        header_pill: plate(
+            &mut images,
+            HEADER_PILL,
+            HEADER_PILL_RADIUS,
+            HEADER_PILL_BORDER,
+        ),
+        nav_panel: plate(&mut images, NAV_PANEL, NAV_PANEL_RADIUS, NAV_PANEL_BORDER),
+        next_pill: plate(&mut images, NEXT_PILL, NEXT_PILL_RADIUS, NEXT_PILL_BORDER),
+        nav_button: rounded(&mut images, Vec2::splat(NAV_BUTTON), NAV_BUTTON_RADIUS),
+        nav_undo: nav_undo(&mut images),
+        nav_next: nav_next(&mut images),
+        confetti: rounded(
+            &mut images,
+            Vec2::new(CONFETTI_W, CONFETTI_H),
+            CONFETTI_W * 0.35,
+        ),
     });
 }
 
@@ -287,5 +328,74 @@ fn droplet(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(DROPLET_W, DROPLET_H));
     let size = raster.size();
     raster.shape(ellipse(size * 0.5, size * 0.5), item_shade);
+    raster.finish(images)
+}
+
+fn rounded(images: &mut Assets<Image>, size: Vec2, radius: f32) -> Handle<Image> {
+    let mut raster = raster(size);
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::from_corners(Vec2::ZERO, size), radius),
+            SCALE as f32,
+        ),
+        solid([1.0, 1.0, 1.0, 1.0]),
+    );
+    raster.finish(images)
+}
+
+fn plate(images: &mut Assets<Image>, size: Vec2, radius: f32, border: f32) -> Plate {
+    Plate {
+        outer: rounded(images, size, radius),
+        inner: rounded(images, size - Vec2::splat(2.0 * border), radius - border),
+        size,
+        border,
+    }
+}
+
+const ARC_RADIUS: f32 = 11.5;
+const ARC_WIDTH: f32 = 5.0;
+const HEAD_REACH: f32 = 10.0;
+const HEAD_HALF: f32 = 7.5;
+const HEAD_BACK: f32 = 2.5;
+
+/// A counter-clockwise arrow: a ring left open in the top-left quadrant, with
+/// the head sitting on the upper end of the arc.
+fn nav_undo(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::splat(NAV_GLYPH_SIZE));
+    let center = Vec2::new(NAV_GLYPH_SIZE * 0.5, NAV_GLYPH_SIZE * 0.5 + 1.0);
+    let top = center.y - ARC_RADIUS;
+    let arc = union(
+        intersect(
+            ring(center, ARC_RADIUS, ARC_WIDTH),
+            half_plane(center, Vec2::NEG_Y),
+        ),
+        intersect(
+            ring(center, ARC_RADIUS, ARC_WIDTH),
+            half_plane(center, Vec2::NEG_X),
+        ),
+    );
+    let head = triangle(
+        Vec2::new(center.x - HEAD_REACH, top),
+        Vec2::new(center.x + HEAD_BACK, top - HEAD_HALF),
+        Vec2::new(center.x + HEAD_BACK, top + HEAD_HALF),
+    );
+    raster.shape(scaled(union(arc, head), SCALE as f32), solid([1.0; 4]));
+    raster.finish(images)
+}
+
+fn nav_next(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::splat(NAV_GLYPH_SIZE));
+    let inset = NAV_GLYPH_SIZE * 0.22;
+    raster.shape(
+        scaled(
+            triangle(
+                Vec2::new(inset, inset),
+                Vec2::new(inset, NAV_GLYPH_SIZE - inset),
+                Vec2::new(NAV_GLYPH_SIZE - inset, NAV_GLYPH_SIZE * 0.5),
+            ),
+            SCALE as f32,
+        ),
+        solid([1.0; 4]),
+    );
     raster.finish(images)
 }

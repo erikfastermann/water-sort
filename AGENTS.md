@@ -59,8 +59,14 @@ appended line:
 
     shot [name]   save a screenshot to <dir>, default shot-<n>.png
     tap <bottle>  click the bottle with that id
+    tap back      click the rewind button
+    tap fwd       click the forward button
+    tap next      click the next level button, even while it is hidden
     tap bg        click the background, deselecting or cancelling
     quit          exit the app
+
+Since tap writes the click directly, tap next works while the button is
+invisible, which is how you jump between levels without solving them.
 
 Append one command at a time and wait a moment between them. Screenshots are
 saved over the following frames, so a quit in the same batch cancels them, and

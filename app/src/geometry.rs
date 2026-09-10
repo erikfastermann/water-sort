@@ -34,6 +34,8 @@ pub const NAV_TOP: f32 = CANVAS_BOTTOM + NAV_H;
 pub const PLAY_TOP: f32 = HEADER_BOTTOM;
 pub const PLAY_BOTTOM: f32 = NAV_TOP;
 pub const PLAY_CENTER: Vec2 = Vec2::new(0.0, (PLAY_TOP + PLAY_BOTTOM) / 2.0);
+pub const HEADER_CENTER: Vec2 = Vec2::new(0.0, CANVAS_TOP - HEADER_H / 2.0);
+pub const NAV_CENTER: Vec2 = Vec2::new(0.0, CANVAS_BOTTOM + NAV_H / 2.0);
 
 const _: () = assert!(BOARD_W <= CANVAS_W);
 const _: () = assert!(BOARD_H <= PLAY_TOP - PLAY_BOTTOM);

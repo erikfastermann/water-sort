@@ -173,6 +173,12 @@ pub const Z_CORK: f32 = 3.0;
 pub const Z_STREAM: f32 = 15.0;
 pub const Z_POUR: f32 = 20.0;
 pub const Z_SWIRL: f32 = 25.0;
+pub const Z_OVERLAY: f32 = 40.0;
+pub const Z_CONFETTI: f32 = 45.0;
+pub const Z_HUD: f32 = 50.0;
+pub const Z_HUD_FACE: f32 = 0.1;
+pub const Z_HUD_GLYPH: f32 = 0.2;
+pub const Z_BANNER: f32 = 55.0;
 
 pub const HALO_ALPHA: f32 = 0.45;
 pub const HALO_WIDTH: f32 = BOTTLE_W * 2.6;
@@ -227,3 +233,46 @@ pub const DROPLET_W: f32 = 12.0;
 pub const DROPLET_H: f32 = 16.0;
 
 pub const INTRO_ENTRY_MARGIN: f32 = 120.0;
+
+pub const HEADER_PILL: Vec2 = Vec2::new(214.0, 58.0);
+pub const HEADER_PILL_RADIUS: f32 = 29.0;
+pub const HEADER_PILL_BORDER: f32 = 4.0;
+pub const HEADER_FONT: f32 = 30.0;
+
+pub const NAV_PANEL: Vec2 = Vec2::new(244.0, 100.0);
+pub const NAV_PANEL_RADIUS: f32 = 50.0;
+pub const NAV_PANEL_BORDER: f32 = 4.0;
+pub const NAV_BUTTON: f32 = 74.0;
+pub const NAV_BUTTON_RADIUS: f32 = 25.0;
+pub const NAV_RING_W: f32 = 5.0;
+pub const NAV_RING_IN_W: f32 = 3.0;
+pub const NAV_GLYPH_SIZE: f32 = 36.0;
+pub const NAV_GAP: f32 = 30.0;
+
+pub const NEXT_PILL: Vec2 = Vec2::new(236.0, 66.0);
+pub const NEXT_PILL_RADIUS: f32 = 33.0;
+pub const NEXT_PILL_BORDER: f32 = 4.0;
+pub const NEXT_FONT: f32 = 26.0;
+pub const NEXT_OFFSET: f32 = -84.0;
+pub const NEXT_GLYPH_SIZE: f32 = 28.0;
+pub const NEXT_GLYPH_X: f32 = 92.0;
+
+pub const BANNER_FONT: f32 = 38.0;
+pub const BANNER_OFFSET: f32 = 26.0;
+pub const BANNER_LINE: f32 = 1.25;
+pub const BANNER_SCALE_FROM: f32 = 0.4;
+pub const BANNER_SWAY: f32 = 2.0 * PI / 180.0;
+pub const BANNER_SWAY_HZ: f32 = 0.6;
+pub const BANNER_SHADOW_OFFSET: Vec2 = Vec2::new(0.0, -4.0);
+
+pub const CONFETTI_COUNT: usize = 90;
+pub const CONFETTI_W: f32 = 9.0;
+pub const CONFETTI_H: f32 = 13.0;
+pub const CONFETTI_SPREAD_X: f32 = 60.0;
+pub const CONFETTI_SPEED_MIN: f32 = 40.0;
+pub const CONFETTI_SPEED_MAX: f32 = 140.0;
+pub const CONFETTI_DROP: f32 = 280.0;
+pub const CONFETTI_GRAVITY: f32 = -300.0;
+pub const CONFETTI_SPIN: f32 = 6.0;
+
+pub const FLUID_NAV_KICK: f32 = 2.5;
