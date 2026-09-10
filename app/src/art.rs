@@ -3,20 +3,24 @@ use std::f32::consts::{PI, TAU};
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, SliceScaleMode, SpriteImageMode, TextureSlicer};
 
-use crate::geometry::{COL_PITCH, CURTAIN_H, LINES, SAFE_MIN, outer_h};
+use crate::geometry::{
+    COL_PITCH, COLOR_CURTAIN_STRIP, CURTAIN_H, DOOR_MIN, LINES, SAFE_MIN, outer_h,
+};
 use crate::raster::{
     Raster, ellipse, half_plane, in_pixels, intersect, outline, radial, radial_inverse, rect, ring,
     rotated, rounded_rect, scaled, smooth_union, solid, sparkle, triangle, union,
 };
 use crate::rng::Pcg32;
 use crate::theme::{
-    BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H,
-    CORK_H, CORK_W, CURTAIN_KNOB, CURTAIN_ROLL_W, DROPLET_H, DROPLET_W, GLASS_WALL, HEADER_PILL,
-    HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE_H, ICE_CROWN_H, ICE_SHARD_H, ICE_SHARD_W,
-    ITEM_H, LID_H, LID_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL,
-    NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS,
-    PLUG_H, PLUG_W, QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W, SAFE_BORDER,
-    SAFE_CROSS_D, SAFE_DIAL_D, SAFE_HUB_D, SAFE_RADIUS,
+    BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, COLOR_CURTAIN_ICON_H,
+    COLOR_CURTAIN_ICON_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H, CORK_H, CORK_W, CURTAIN_KNOB,
+    CURTAIN_ROLL_W, DOOR_BORDER, DOOR_GROOVE_W, DOOR_RADIUS, DROPLET_H, DROPLET_W, GLASS_WALL,
+    HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE_H, ICE_CROWN_H, ICE_SHARD_H,
+    ICE_SHARD_W, ITEM_H, KEY_H, KEY_W, LID_H, LID_W, LOCK_H, LOCK_SHACKLE_H, LOCK_SHACKLE_W,
+    LOCK_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL, NAV_PANEL_BORDER,
+    NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS, PLUG_H, PLUG_W,
+    QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W, SAFE_BORDER, SAFE_CROSS_D, SAFE_DIAL_D,
+    SAFE_HUB_D, SAFE_RADIUS, TAG_H, TAG_W,
 };
 
 const SCALE: u32 = 2;
@@ -69,6 +73,14 @@ pub struct Art {
     pub safe_cross: Handle<Image>,
     pub safe_dial: Handle<Image>,
     pub safe_hub: Handle<Image>,
+    pub door_plate: Plate,
+    pub door_grooves: Handle<Image>,
+    pub lock_body: Handle<Image>,
+    pub lock_shackle: Handle<Image>,
+    pub key: Handle<Image>,
+    pub tag: Handle<Image>,
+    pub color_cloth: Handle<Image>,
+    pub bottle_icon: Handle<Image>,
     pub header_pill: Plate,
     pub nav_panel: Plate,
     pub next_pill: Plate,
@@ -135,6 +147,14 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         safe_cross: safe_cross(&mut images),
         safe_dial: safe_dial(&mut images),
         safe_hub: rounded(&mut images, Vec2::splat(SAFE_HUB_D), SAFE_HUB_D * 0.5),
+        door_plate: plate(&mut images, DOOR_MIN, DOOR_RADIUS, DOOR_BORDER),
+        door_grooves: door_grooves(&mut images),
+        lock_body: lock_body(&mut images),
+        lock_shackle: lock_shackle(&mut images),
+        key: key(&mut images),
+        tag: tag(&mut images),
+        color_cloth: color_cloth(&mut images),
+        bottle_icon: bottle_icon(&mut images),
         header_pill: plate(
             &mut images,
             HEADER_PILL,
@@ -165,6 +185,16 @@ pub fn sliced(inset: f32) -> SpriteImageMode {
         sides_scale_mode: SliceScaleMode::Stretch,
         max_corner_scale: 1.0 / SCALE as f32,
     })
+}
+
+/// Repeats the texture horizontally every authored width instead of stretching
+/// it, so one sprite can cover a span of any size with an even pattern.
+pub fn tiled() -> SpriteImageMode {
+    SpriteImageMode::Tiled {
+        tile_x: true,
+        tile_y: false,
+        stretch_value: 1.0 / SCALE as f32,
+    }
 }
 
 /// The left `fraction` of a texture authored at `design` units, for a sprite
@@ -840,6 +870,152 @@ fn nav_next(images: &mut Assets<Image>) -> Handle<Image> {
             SCALE as f32,
         ),
         solid([1.0; 4]),
+    );
+    raster.finish(images)
+}
+
+const GROOVE_H: f32 = 8.0;
+const GROOVE_W: f32 = 2.2;
+
+/// One plank seam, repeated across a door half by [`tiled`].
+fn door_grooves(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(DOOR_GROOVE_W, GROOVE_H));
+    raster.shape(
+        scaled(rect(Rect::new(0.0, 0.0, GROOVE_W, GROOVE_H)), SCALE as f32),
+        solid([1.0; 4]),
+    );
+    raster.finish(images)
+}
+
+const LOCK_RADIUS: f32 = 9.0;
+const KEYHOLE_LEVEL: f32 = 0.34;
+
+fn lock_body(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(LOCK_W, LOCK_H));
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::new(0.0, 0.0, LOCK_W, LOCK_H), LOCK_RADIUS),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    let eye = Vec2::new(LOCK_W * 0.5, LOCK_H * 0.38);
+    let slot = triangle(
+        Vec2::new(eye.x - 2.0, eye.y),
+        Vec2::new(eye.x + 2.0, eye.y),
+        Vec2::new(eye.x, LOCK_H * 0.78),
+    );
+    let keyhole = union(ellipse(eye, Vec2::splat(5.0)), slot);
+    raster.shape(
+        scaled(keyhole, SCALE as f32),
+        solid([KEYHOLE_LEVEL, KEYHOLE_LEVEL, KEYHOLE_LEVEL, 1.0]),
+    );
+    raster.finish(images)
+}
+
+fn lock_shackle(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(LOCK_SHACKLE_W, LOCK_SHACKLE_H));
+    let center = Vec2::new(LOCK_SHACKLE_W * 0.5, LOCK_SHACKLE_H);
+    let radius = LOCK_SHACKLE_W * 0.5 - 3.0;
+    raster.shape(
+        scaled(
+            intersect(ring(center, radius, 6.0), half_plane(center, Vec2::Y)),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+const KEY_BOW: f32 = 6.5;
+const KEY_SHAFT: f32 = 3.4;
+
+/// Bow on the left, shaft to the right, two teeth hanging off the tip.
+fn key(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(KEY_W, KEY_H));
+    let bow = Vec2::new(KEY_BOW + 1.0, KEY_H * 0.5);
+    let shaft = rounded_rect(
+        Rect::new(
+            bow.x,
+            KEY_H * 0.5 - KEY_SHAFT * 0.5,
+            KEY_W - 1.0,
+            KEY_H * 0.5 + KEY_SHAFT * 0.5,
+        ),
+        KEY_SHAFT * 0.5,
+    );
+    let tooth = |at: f32, drop: f32| rect(Rect::new(at, KEY_H * 0.5, at + 3.0, KEY_H * 0.5 + drop));
+    let teeth = union(tooth(KEY_W - 8.0, 5.0), tooth(KEY_W - 14.0, 3.5));
+    raster.shape(
+        scaled(
+            union(ring(bow, KEY_BOW, 3.6), union(shaft, teeth)),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+const TAG_RADIUS: f32 = 7.0;
+const TAG_HOLE: f32 = 4.0;
+const TAG_HOLE_LEVEL: f32 = 0.42;
+
+fn tag(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(TAG_W, TAG_H));
+    let hole = Vec2::new(TAG_W * 0.5, 8.0);
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::new(0.0, 0.0, TAG_W, TAG_H), TAG_RADIUS),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.shape(
+        scaled(ellipse(hole, Vec2::splat(TAG_HOLE)), SCALE as f32),
+        solid([TAG_HOLE_LEVEL, TAG_HOLE_LEVEL, TAG_HOLE_LEVEL, 1.0]),
+    );
+    raster.finish(images)
+}
+
+/// One vertical strip of a colour curtain. The fold pattern is exactly one
+/// period wide, so neighbouring strips join without a seam.
+fn color_cloth(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(COLOR_CURTAIN_STRIP);
+    let size = raster.size();
+    let bounds = raster.bounds();
+    raster.shape(
+        rect(bounds),
+        in_pixels(size, |point| {
+            let point = point / SCALE as f32;
+            let (u, v) = (
+                point.x / COLOR_CURTAIN_STRIP.x,
+                point.y / COLOR_CURTAIN_STRIP.y,
+            );
+            let fold = (u * TAU).sin() * 0.5 + 0.5;
+            let rail = if (0.05..=0.95).contains(&v) {
+                1.0
+            } else {
+                0.74
+            };
+            let level = ((0.60 + 0.40 * fold) * rail).clamp(0.0, 1.0);
+            [level, level, level, 1.0]
+        }),
+    );
+    raster.finish(images)
+}
+
+/// A filled bottle silhouette, used as the colour badge on a colour curtain.
+fn bottle_icon(images: &mut Assets<Image>) -> Handle<Image> {
+    let (w, h) = (COLOR_CURTAIN_ICON_W, COLOR_CURTAIN_ICON_H);
+    let mut raster = raster(Vec2::new(w, h));
+    let body = rounded_rect(Rect::new(0.0, h * 0.30, w, h), w * 0.28);
+    let neck = rounded_rect(Rect::new(w * 0.34, h * 0.08, w * 0.66, h * 0.42), w * 0.10);
+    let rim = rounded_rect(Rect::new(w * 0.26, 0.0, w * 0.74, h * 0.12), w * 0.08);
+    raster.shape(
+        scaled(
+            smooth_union(smooth_union(body, neck, w * 0.22), rim, 1.5),
+            SCALE as f32,
+        ),
+        item_shade,
     );
     raster.finish(images)
 }

@@ -9,6 +9,7 @@ use crate::input::Selection;
 use crate::theme;
 use crate::view::{BoardView, BottleView, MAX_BOTTLES};
 
+use super::decor::LockColors;
 use super::feature;
 
 /// Fixed home position of a bottle; never moves.
@@ -142,6 +143,7 @@ pub fn spawn(
     board: Entity,
     art: &Art,
     geometry: &BoardGeometry,
+    colors: &LockColors,
     view: &BottleView,
 ) {
     let lines = view.line_span();
@@ -274,7 +276,7 @@ pub fn spawn(
             Transform::from_xyz(0.0, theme::ITEM_H, theme::Z_ITEM_SURFACE),
             ChildOf(slot),
         ));
-        feature::spawn_item(commands, slot, art, view, index);
+        feature::spawn_item(commands, slot, art, colors, view, index);
     }
 
     commands.spawn((

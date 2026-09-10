@@ -226,6 +226,12 @@ fn effects_time(plan: &MovePlan) -> f32 {
     if !plan.safes_opened.is_empty() {
         longest = longest.max(theme::RANGE_DELAY + theme::SAFE_OPEN);
     }
+    if plan.unlock_run.is_some() {
+        longest = longest.max(theme::LOCK_DELAY + theme::DOOR_OPEN);
+    }
+    if !plan.color_curtains_lifted.is_empty() {
+        longest = longest.max(theme::RANGE_DELAY + theme::COLOR_CURTAIN_LIFT);
+    }
     longest
 }
 

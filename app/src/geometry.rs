@@ -6,8 +6,9 @@ use bevy::prelude::*;
 use water_sort_core::layout::Layout;
 
 use crate::theme::{
-    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, CURTAIN_MARGIN, GLASS_WALL, ICE_MARGIN,
-    INTRO_ENTRY_MARGIN, INTRO_STAGGER, ITEM_H, NECK_H, SAFE_MARGIN,
+    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, COLOR_CURTAIN_MARGIN, CURTAIN_MARGIN,
+    DOOR_MARGIN, GLASS_WALL, ICE_MARGIN, INTRO_ENTRY_MARGIN, INTRO_STAGGER, ITEM_H, NECK_H,
+    SAFE_MARGIN,
 };
 
 const CAP: [u8; Layout::LINES as usize] = Layout::MAX_CAPACITY;
@@ -54,6 +55,19 @@ pub const MOUTH_INSET: f32 = 6.0;
 /// range decoration is exactly this tall.
 pub const ICE_H: f32 = outer_h(1) + 2.0 * ICE_MARGIN;
 pub const CURTAIN_H: f32 = outer_h(1) + 2.0 * CURTAIN_MARGIN;
+
+pub const DOOR_H: f32 = outer_h(1) + 2.0 * DOOR_MARGIN;
+
+/// A door is split in the middle and each half is nine sliced, so the art has
+/// to be authored at the narrowest half a single-bottle group can produce.
+pub const DOOR_MIN: Vec2 = Vec2::new((BOTTLE_W + 2.0 * DOOR_MARGIN) / 2.0, DOOR_H);
+
+/// One strip of a colour curtain, authored at the height of a single-line
+/// bottle; a taller bottle stretches the folds vertically.
+pub const COLOR_CURTAIN_STRIP: Vec2 = Vec2::new(
+    (BOTTLE_W + 2.0 * COLOR_CURTAIN_MARGIN) / crate::theme::COLOR_CURTAIN_STRIPS as f32,
+    outer_h(1) + 2.0 * COLOR_CURTAIN_MARGIN,
+);
 
 /// The smallest door a safe can need, and therefore the size its art is drawn
 /// at; every real door is at least this large in both axes.

@@ -4,7 +4,7 @@ use std::range::{Range, RangeInclusive};
 
 use bevy::prelude::*;
 use water_sort_core::layout::Layout;
-use water_sort_core::state::{BOTTLE_COUNT, Move as CoreMove, State};
+use water_sort_core::state::{BOTTLE_COUNT, Move as CoreMove, State, to_index};
 
 /// Upper bound for arrays indexed by bottle id; core reserves index 0.
 pub const MAX_BOTTLES: usize = BOTTLE_COUNT;
@@ -14,7 +14,8 @@ pub struct ItemView {
     pub color: u8,
     pub hidden: bool,
     pub locked: bool,
-    pub has_key: bool,
+    /// Index of the lock group this item unlocks, `0` when it carries no key.
+    pub key: u16,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -97,7 +98,10 @@ fn bottle(state: &State, layout: &Layout, id: u8) -> BottleView {
             color: state.get_color(id, item),
             hidden: state.get_item_hidden(id, item),
             locked: state.get_item_locked(id, item),
-            has_key: state.get_item_has_key(id, item),
+            key: match state.get_item_has_key(id, item) {
+                true => to_index(id, item),
+                false => 0,
+            },
         })
         .collect();
 
@@ -186,7 +190,9 @@ impl MovePlan {
             before
                 .bottles
                 .iter()
-                .filter(|bottle| mov.lift_color_curtain(bottle.id))
+                .filter(|bottle| {
+                    bottle.color_curtain.is_some() && mov.lift_color_curtain(bottle.id)
+                })
                 .map(|bottle| bottle.id)
                 .collect()
         } else {

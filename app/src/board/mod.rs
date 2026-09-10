@@ -57,10 +57,15 @@ impl Plugin for BoardPlugin {
                         feature::sync_bands,
                         feature::sync_lids,
                         feature::sync_plugs,
+                        feature::sync_key_badges,
+                        feature::sync_tags,
                         decor::sync_ice,
                         decor::sync_curtains,
                         decor::sync_safes,
                         decor::sync_safe_counters,
+                        decor::sync_doors,
+                        decor::sync_keys,
+                        decor::sync_color_curtains,
                     ),
                 )
                     .chain()
@@ -93,10 +98,11 @@ fn build(commands: &mut Commands, art: &Art, view: &BoardView, geometry: &BoardG
         ))
         .id();
 
+    let colors = decor::lock_colors(view);
     for bottle in &view.bottles {
-        bottle::spawn(commands, root, art, geometry, bottle);
+        bottle::spawn(commands, root, art, geometry, &colors, bottle);
     }
-    decor::spawn(commands, root, art, geometry, view);
+    decor::spawn(commands, root, art, geometry, view, &colors);
 }
 
 /// Everything a level change or a history step touches.

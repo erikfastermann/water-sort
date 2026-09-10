@@ -360,3 +360,61 @@ pub const SAFE_SPIN: f32 = -120.0 * PI / 180.0;
 pub const SAFE_POP: f32 = 0.34;
 pub const SAFE_SWING: f32 = -13.0 * PI / 180.0;
 pub const SAFE_SHUT: f32 = 0.94;
+
+pub const DOOR_MARGIN: f32 = COL_GAP / 2.0;
+pub const DOOR_RADIUS: f32 = 14.0;
+pub const DOOR_BORDER: f32 = 7.0;
+pub const DOOR_GROOVE_W: f32 = 30.0;
+pub const DOOR_SWING: f32 = 11.0 * PI / 180.0;
+pub const DOOR_SHUT: f32 = 0.93;
+pub const DOOR_GROOVE_ALPHA: f32 = 0.55;
+
+pub const LOCK_W: f32 = 40.0;
+pub const LOCK_H: f32 = 34.0;
+pub const LOCK_SHACKLE_W: f32 = 26.0;
+pub const LOCK_SHACKLE_H: f32 = 24.0;
+pub const LOCK_SHACKLE_POP: f32 = 9.0;
+pub const LOCK_DROP: f32 = 210.0;
+pub const LOCK_TIP: f32 = 22.0 * PI / 180.0;
+pub const LOCK_PLATE: Color = Color::srgb_u8(0x2B, 0x1E, 0x4A);
+
+pub const KEY_W: f32 = 34.0;
+pub const KEY_H: f32 = 16.0;
+pub const KEY_BADGE: f32 = 0.62;
+pub const KEY_ARC: f32 = 70.0;
+pub const KEY_SPIN: f32 = 2.5;
+pub const KEY_SPARKS: usize = 8;
+pub const KEY_SPARK_SIZE: f32 = 15.0;
+pub const KEY_SPARK_LIFE: f32 = 0.4;
+pub const KEY_SPARK_SPEED: f32 = 55.0;
+pub const KEY_SPARK_GRAVITY: f32 = -120.0;
+/// The lock is only unbolted once the key has arrived.
+pub const LOCK_DELAY: f32 = KEY_FLIGHT;
+
+pub const TAG_W: f32 = 26.0;
+pub const TAG_H: f32 = 32.0;
+pub const TAG_CORD_W: f32 = 4.0;
+pub const TAG_CORD_H: f32 = 16.0;
+pub const TAG_HANG: Vec2 = Vec2::new(28.0, -13.0);
+pub const TAG_SWAY: f32 = 3.0 * PI / 180.0;
+pub const TAG_SWAY_HZ: f32 = 0.4;
+pub const TAG_SWING: f32 = 1.4;
+pub const TAG_MAX_SWING: f32 = 0.5;
+
+pub const COLOR_CURTAIN_MARGIN: f32 = COL_GAP / 2.0;
+pub const COLOR_CURTAIN_STRIPS: usize = 6;
+pub const COLOR_CURTAIN_RIPPLE: f32 = 0.09;
+pub const COLOR_CURTAIN_DRIFT: f32 = 20.0;
+pub const COLOR_CURTAIN_ICON_W: f32 = 30.0;
+pub const COLOR_CURTAIN_ICON_H: f32 = 44.0;
+pub const COLOR_CURTAIN_ICON_Y: f32 = 0.30;
+pub const COLOR_CURTAIN_RING: f32 = 1.35;
+
+pub const Z_COLOR_CURTAIN: f32 = 5.6;
+pub const Z_COLOR_CURTAIN_ICON: f32 = 5.7;
+pub const Z_DOOR: f32 = 7.0;
+pub const Z_DOOR_LOCK: f32 = 7.4;
+pub const Z_KEY: f32 = 7.6;
+pub const Z_TAG_CORD: f32 = 2.5;
+pub const Z_TAG: f32 = 2.7;
+pub const Z_ITEM_KEY: f32 = 0.5;

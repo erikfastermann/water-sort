@@ -1,3 +1,5 @@
+use std::f32::consts::TAU;
+
 use bevy::math::curve::{Curve, EaseFunction};
 use bevy::prelude::*;
 use bevy::sprite::Anchor;
@@ -8,7 +10,9 @@ use crate::input::Selection;
 use crate::theme;
 use crate::view::{BoardView, BottleView, MovePlan};
 
+use super::Fluids;
 use super::bottle::{fill_level, top_of};
+use super::decor::LockColors;
 
 #[derive(Component)]
 pub struct Question {
@@ -29,6 +33,20 @@ pub struct MetalLid {
     bottle: u8,
     index: u8,
     open: f32,
+}
+
+#[derive(Component)]
+pub struct KeyBadge {
+    bottle: u8,
+    index: u8,
+    key: u16,
+}
+
+/// Hinge at the neck; the cord and the tag hang below it, so rotating this node
+/// swings the whole tag.
+#[derive(Component)]
+pub struct FilterTag {
+    bottle: u8,
 }
 
 #[derive(Component)]
@@ -75,10 +93,36 @@ fn locked(bottle: &BottleView, index: u8, effects: Option<(&MovePlan, f32)>) -> 
         || effects.is_some_and(|(plan, _)| plan.unlock_item == Some((bottle.id, index)))
 }
 
-pub fn spawn_item(commands: &mut Commands, slot: Entity, art: &Art, view: &BottleView, index: u8) {
+pub fn spawn_item(
+    commands: &mut Commands,
+    slot: Entity,
+    art: &Art,
+    colors: &LockColors,
+    view: &BottleView,
+    index: u8,
+) {
     let Some(item) = view.items.get(usize::from(index)) else {
         return;
     };
+
+    if item.key != 0 {
+        let color = colors.get(item.key);
+        commands.spawn((
+            KeyBadge {
+                bottle: view.id,
+                index,
+                key: item.key,
+            },
+            Sprite {
+                image: art.key.clone(),
+                color,
+                custom_size: Some(Vec2::new(theme::KEY_W, theme::KEY_H) * theme::KEY_BADGE),
+                ..default()
+            },
+            Transform::from_xyz(0.0, theme::ITEM_H * 0.5, theme::Z_ITEM_KEY),
+            ChildOf(slot),
+        ));
+    }
 
     if item.hidden {
         commands.spawn((
@@ -158,6 +202,46 @@ pub fn spawn_bottle(
             Anchor::BOTTOM_CENTER,
             Transform::from_xyz(0.0, base_y - theme::ROCK_DROP, theme::Z_ROCKS),
             ChildOf(holder),
+        ));
+    }
+
+    if let Some(color) = view.filter_color {
+        let hinge = commands
+            .spawn((
+                FilterTag { bottle: view.id },
+                Transform::from_xyz(
+                    theme::TAG_HANG.x,
+                    mouth_y + theme::TAG_HANG.y,
+                    theme::Z_TAG_CORD,
+                ),
+                Visibility::default(),
+                ChildOf(holder),
+            ))
+            .id();
+        commands.spawn((
+            Sprite {
+                color: theme::ROPE,
+                custom_size: Some(Vec2::new(theme::TAG_CORD_W, theme::TAG_CORD_H)),
+                ..default()
+            },
+            Anchor::TOP_CENTER,
+            Transform::from_xyz(0.0, 0.0, 0.0),
+            ChildOf(hinge),
+        ));
+        commands.spawn((
+            Sprite {
+                image: art.tag.clone(),
+                color: theme::item_color(color),
+                custom_size: Some(Vec2::new(theme::TAG_W, theme::TAG_H)),
+                ..default()
+            },
+            Anchor::TOP_CENTER,
+            Transform::from_xyz(
+                0.0,
+                -theme::TAG_CORD_H + 3.0,
+                theme::Z_TAG - theme::Z_TAG_CORD,
+            ),
+            ChildOf(hinge),
         ));
     }
 
@@ -344,5 +428,61 @@ pub fn sync_plugs(
 
         transform.translation = arc(from, to, eased).extend(theme::Z_PLUG);
         transform.rotation = Quat::from_rotation_z(from_angle.lerp(to_angle, eased));
+    }
+}
+
+/// The key leaves the item the moment its flight starts, but the resting view
+/// has already dropped it, so the badge has to keep rendering until then.
+fn carries_key(
+    bottle: &BottleView,
+    index: u8,
+    key: u16,
+    effects: Option<(&MovePlan, f32)>,
+) -> bool {
+    bottle
+        .items
+        .get(usize::from(index))
+        .is_some_and(|item| item.key == key)
+        || effects
+            .is_some_and(|(plan, clock)| clock < 0.0 && plan.key_used == Some((bottle.id, index)))
+}
+
+pub fn sync_key_badges(
+    view: Res<BoardView>,
+    flow: Res<Flow>,
+    mut badges: Query<(&KeyBadge, &mut Transform, &mut Visibility)>,
+) {
+    let pour = flow.pour();
+    let effects = flow.effects();
+    for (badge, mut transform, mut visibility) in &mut badges {
+        let bottle = view.get(badge.bottle);
+        let fill = (fill_level(bottle, pour.as_ref()) - f32::from(badge.index)).clamp(0.0, 1.0);
+        let hidden = hidden_level(bottle, badge.index, effects);
+        let shown =
+            fill > 0.0 && hidden <= 0.0 && carries_key(bottle, badge.index, badge.key, effects);
+
+        *visibility = if shown {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
+        transform.translation.y = fill * theme::ITEM_H * 0.5;
+    }
+}
+
+/// The tag hangs off the neck, so it counter-rotates against the glass and
+/// borrows the fluid spring for its swing.
+pub fn sync_tags(
+    time: Res<Time>,
+    fluids: Res<Fluids>,
+    mut tags: Query<(&FilterTag, &mut Transform)>,
+) {
+    let elapsed = time.elapsed_secs();
+    for (tag, mut transform) in &mut tags {
+        let fluid = fluids.get(tag.bottle);
+        let sway = (elapsed * theme::TAG_SWAY_HZ * TAU + f32::from(tag.bottle)).sin();
+        let swing =
+            (fluid.tilt * theme::TAG_SWING).clamp(-theme::TAG_MAX_SWING, theme::TAG_MAX_SWING);
+        transform.rotation = Quat::from_rotation_z(theme::TAG_SWAY * sway + swing - fluid.glass);
     }
 }
