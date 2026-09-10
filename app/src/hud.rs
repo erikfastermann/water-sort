@@ -7,7 +7,7 @@ use bevy::text::LineHeight;
 use crate::anim::{Flow, Play};
 use crate::art::{Art, Plate};
 use crate::fx::{FitViewport, Particle};
-use crate::geometry::{HEADER_CENTER, NAV_CENTER, PLAY_CENTER};
+use crate::geometry::{Anchored, Band, HEADER_CENTER, NAV_CENTER, PLAY_CENTER};
 use crate::input::PendingClick;
 use crate::rng::Pcg32;
 use crate::session::Session;
@@ -160,6 +160,9 @@ fn spawn_hud(mut commands: Commands, art: Res<Art>, session: Res<Session>) {
         theme::HEADER_BORDER,
         theme::HEADER_FILL,
     );
+    commands
+        .entity(header)
+        .insert(Anchored::new(Band::Header, Vec2::ZERO));
     commands.spawn((
         HeaderLabel,
         label(level_text(&session), theme::HEADER_FONT, theme::HEADER_TEXT),
@@ -167,7 +170,7 @@ fn spawn_hud(mut commands: Commands, art: Res<Art>, session: Res<Session>) {
         ChildOf(header),
     ));
 
-    plate(
+    let panel = plate(
         &mut commands,
         &art.nav_panel,
         NAV_CENTER,
@@ -175,19 +178,12 @@ fn spawn_hud(mut commands: Commands, art: Res<Art>, session: Res<Session>) {
         theme::NAV_BORDER,
         theme::NAV_FILL,
     );
+    commands
+        .entity(panel)
+        .insert(Anchored::new(Band::Nav, Vec2::ZERO));
     let offset = (theme::NAV_BUTTON + theme::NAV_GAP) * 0.5;
-    nav_button(
-        &mut commands,
-        &art,
-        NavAction::Rewind,
-        NAV_CENTER - Vec2::X * offset,
-    );
-    nav_button(
-        &mut commands,
-        &art,
-        NavAction::Forward,
-        NAV_CENTER + Vec2::X * offset,
-    );
+    nav_button(&mut commands, &art, NavAction::Rewind, -Vec2::X * offset);
+    nav_button(&mut commands, &art, NavAction::Forward, Vec2::X * offset);
 
     let next = plate(
         &mut commands,
@@ -201,6 +197,7 @@ fn spawn_hud(mut commands: Commands, art: Res<Art>, session: Res<Session>) {
         NavButton {
             action: NavAction::Next,
         },
+        Anchored::new(Band::Play, Vec2::Y * theme::NEXT_OFFSET),
         Visibility::Hidden,
         Pickable::default(),
     ));
@@ -231,6 +228,7 @@ fn spawn_hud(mut commands: Commands, art: Res<Art>, session: Res<Session>) {
             color: theme::BANNER_SHADOW,
         },
         Visibility::Hidden,
+        Anchored::new(Band::Play, Vec2::Y * theme::BANNER_OFFSET),
         Transform::from_translation(
             (PLAY_CENTER + Vec2::Y * theme::BANNER_OFFSET).extend(theme::Z_BANNER),
         ),
@@ -287,7 +285,7 @@ fn plate(
     outer
 }
 
-fn nav_button(commands: &mut Commands, art: &Art, action: NavAction, center: Vec2) {
+fn nav_button(commands: &mut Commands, art: &Art, action: NavAction, offset: Vec2) {
     let disc = |size: f32, role: Role, color: Color, z: f32| {
         (
             NavPart { action, role },
@@ -315,7 +313,10 @@ fn nav_button(commands: &mut Commands, art: &Art, action: NavAction, center: Vec
                 custom_size: Some(Vec2::splat(theme::NAV_BUTTON)),
                 ..default()
             },
-            Transform::from_translation(center.extend(theme::Z_HUD + theme::Z_HUD_GLYPH)),
+            Transform::from_translation(
+                (NAV_CENTER + offset).extend(theme::Z_HUD + theme::Z_HUD_GLYPH),
+            ),
+            Anchored::new(Band::Nav, offset),
             Pickable::default(),
         ))
         .id();

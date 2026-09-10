@@ -21,6 +21,7 @@ mod native {
     };
 
     use bevy::{
+        diagnostic::{FrameTimeDiagnosticsPlugin, LogDiagnosticsPlugin},
         ecs::system::SystemParam,
         prelude::*,
         render::view::screenshot::{Screenshot, save_to_disk},
@@ -44,7 +45,11 @@ mod native {
         }
 
         info!("dev channel: {}", dir.join("commands").display());
-        app.insert_resource(DevChannel {
+        app.add_plugins((
+            FrameTimeDiagnosticsPlugin::default(),
+            LogDiagnosticsPlugin::default(),
+        ))
+        .insert_resource(DevChannel {
             commands: dir.join("commands"),
             dir,
             offset: 0,

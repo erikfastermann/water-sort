@@ -8,6 +8,7 @@ mod hud;
 mod input;
 mod raster;
 mod rng;
+mod safe;
 mod session;
 #[cfg(test)]
 mod solver;
@@ -43,6 +44,7 @@ fn main() {
                 }),
         )
         .add_plugins(dev::DevPlugin)
+        .add_plugins(geometry::GeometryPlugin)
         .add_plugins(art::ArtPlugin)
         .add_plugins(fx::BackgroundPlugin)
         .add_plugins(session::SessionPlugin)

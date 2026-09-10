@@ -1,12 +1,13 @@
 {
   "name": "Water Sort",
   "short_name": "Water Sort",
+  "id": ".",
   "start_url": ".",
   "scope": ".",
   "display": "standalone",
   "orientation": "portrait",
-  "background_color": "#0e1116",
-  "theme_color": "#0e1116",
+  "background_color": "#160b36",
+  "theme_color": "#160b36",
   "icons": [
     {
       "src": "icons/icon.svg",

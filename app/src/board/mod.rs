@@ -7,7 +7,7 @@ use bevy::prelude::*;
 
 use crate::anim::{Flow, Play};
 use crate::art::Art;
-use crate::geometry::BoardGeometry;
+use crate::geometry::{Bands, BoardGeometry};
 use crate::hud::{NavAction, NavRequest};
 use crate::input::Selection;
 use crate::rng::Pcg32;
@@ -28,7 +28,12 @@ impl Plugin for BoardPlugin {
             .world()
             .get_resource::<BoardView>()
             .expect("SessionPlugin runs before BoardPlugin");
-        let geometry = BoardGeometry::new(view.slots());
+        let bands = app
+            .world()
+            .get_resource::<Bands>()
+            .copied()
+            .unwrap_or_default();
+        let geometry = BoardGeometry::new(bands, view.slots());
 
         app.insert_resource(geometry)
             .insert_resource(ShakeRng(Pcg32::new(SHAKE_SEED, 1)))
@@ -37,7 +42,8 @@ impl Plugin for BoardPlugin {
             .add_systems(Startup, spawn_board)
             .add_systems(
                 Update,
-                apply_nav
+                (apply_nav, apply_bands)
+                    .chain()
                     .in_set(Play::Input)
                     .after(crate::hud::handle_nav)
                     .after(crate::input::handle_click),
@@ -119,6 +125,7 @@ struct Board<'w, 's> {
 fn apply_nav(
     mut commands: Commands,
     art: Res<Art>,
+    bands: Res<Bands>,
     mut request: ResMut<NavRequest>,
     mut session: ResMut<Session>,
     mut shake: ResMut<ShakeRng>,
@@ -156,11 +163,35 @@ fn apply_nav(
                 commands.entity(root).despawn();
             }
             *board.view = session.view();
-            *board.geometry = BoardGeometry::new(board.view.slots());
+            *board.geometry = BoardGeometry::new(*bands, board.view.slots());
             *board.fluids = Fluids::default();
             board.selection.clear();
             board.flow.restart_intro();
             build(&mut commands, &art, &board.view, &board.geometry);
         }
     }
+}
+
+/// The safe area is only known once the canvas exists, so the board is rebuilt
+/// around the bands it turns out to have. Everything is derived from
+/// [`BoardView`], so a rebuild loses nothing.
+fn apply_bands(
+    mut commands: Commands,
+    art: Res<Art>,
+    bands: Res<Bands>,
+    view: Res<BoardView>,
+    mut geometry: ResMut<BoardGeometry>,
+    roots: Query<Entity, With<BoardRoot>>,
+    mut applied: Local<Bands>,
+) {
+    if *applied == *bands {
+        return;
+    }
+    *applied = *bands;
+
+    for root in &roots {
+        commands.entity(root).despawn();
+    }
+    *geometry = BoardGeometry::new(*bands, view.slots());
+    build(&mut commands, &art, &view, &geometry);
 }

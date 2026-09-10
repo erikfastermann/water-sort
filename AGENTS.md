@@ -76,3 +76,9 @@ The read offset starts at zero each run, so a reused dir replays its commands
 file from the top. Use a fresh dir per run.
 
 Use this to look at UI changes instead of assuming they work.
+
+A dev run also logs bevy's frame time and fps once a second.
+
+WATER_SORT_SAFE_AREA=<top>,<bottom> fakes a device safe area, in pixels, so a
+desktop window can be checked against a notch and a home indicator. On the web
+the same numbers come from env(safe-area-inset-*).

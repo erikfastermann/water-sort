@@ -3,7 +3,7 @@ use std::f32::consts::TAU;
 use bevy::prelude::*;
 
 use crate::art::Art;
-use crate::geometry::PLAY_CENTER;
+use crate::geometry::{Anchored, Band, PLAY_CENTER};
 use crate::rng::Pcg32;
 use crate::theme;
 
@@ -79,6 +79,7 @@ fn spawn_background(mut commands: Commands, art: Res<Art>, mut rng: ResMut<StarR
             ..default()
         },
         Transform::from_xyz(PLAY_CENTER.x, PLAY_CENTER.y, theme::Z_GLOW),
+        Anchored::new(Band::Play, Vec2::ZERO),
         Pickable::IGNORE,
     ));
 

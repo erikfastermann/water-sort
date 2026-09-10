@@ -3,8 +3,10 @@
 use std::range::Range;
 
 use bevy::prelude::*;
+use bevy::window::PrimaryWindow;
 use water_sort_core::layout::Layout;
 
+use crate::safe;
 use crate::theme::{
     BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, COLOR_CURTAIN_MARGIN, CURTAIN_MARGIN,
     DOOR_MARGIN, GLASS_WALL, ICE_MARGIN, INTRO_ENTRY_MARGIN, INTRO_STAGGER, ITEM_H, NECK_H,
@@ -40,6 +42,143 @@ pub const NAV_CENTER: Vec2 = Vec2::new(0.0, CANVAS_BOTTOM + NAV_H / 2.0);
 
 const _: () = assert!(BOARD_W <= CANVAS_W);
 const _: () = assert!(BOARD_H <= PLAY_TOP - PLAY_BOTTOM);
+
+/// How far the two chrome bands may grow into the play area before the tallest
+/// board stops fitting between them.
+pub const BAND_SLACK: f32 = PLAY_TOP - PLAY_BOTTOM - BOARD_H;
+
+/// Re-reading the insets forces a style recalculation on the web, so it is
+/// polled rather than sampled every frame.
+const SAFE_POLL: f32 = 0.25;
+
+pub struct GeometryPlugin;
+
+impl Plugin for GeometryPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<Bands>().add_systems(
+            Update,
+            (
+                track_safe_area,
+                place_anchored.run_if(resource_changed::<Bands>),
+            )
+                .chain(),
+        );
+    }
+}
+
+/// The three horizontal bands of the screen, after the camera notch and the
+/// home indicator have eaten into the two chrome ones. Every value is the
+/// centre of that band; without insets they are the design constants above.
+#[derive(Resource, Clone, Copy, Debug, PartialEq)]
+pub struct Bands {
+    pub header: Vec2,
+    pub nav: Vec2,
+    pub play: Vec2,
+}
+
+impl Default for Bands {
+    fn default() -> Self {
+        Self::inset(0.0, 0.0)
+    }
+}
+
+impl Bands {
+    /// Insets are in world units and grow the header and nav bands inward. The
+    /// board keeps priority: an inset pair larger than [`BAND_SLACK`] is scaled
+    /// down rather than allowed to squeeze the play area.
+    pub fn inset(top: f32, bottom: f32) -> Self {
+        let top = top.max(0.0);
+        let bottom = bottom.max(0.0);
+        let total = top + bottom;
+        let scale = if total > BAND_SLACK {
+            BAND_SLACK / total
+        } else {
+            1.0
+        };
+
+        let header_bottom = HEADER_BOTTOM - top * scale;
+        let nav_top = NAV_TOP + bottom * scale;
+        Self {
+            header: Vec2::new(0.0, header_bottom + HEADER_H / 2.0),
+            nav: Vec2::new(0.0, nav_top - NAV_H / 2.0),
+            play: Vec2::new(0.0, (header_bottom + nav_top) / 2.0),
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+pub enum Band {
+    Header,
+    Nav,
+    Play,
+}
+
+/// Chrome that follows a band instead of sitting at a fixed world position.
+#[derive(Component, Clone, Copy)]
+pub struct Anchored {
+    band: Band,
+    offset: Vec2,
+}
+
+impl Anchored {
+    pub fn new(band: Band, offset: Vec2) -> Self {
+        Self { band, offset }
+    }
+
+    fn center(self, bands: &Bands) -> Vec2 {
+        let band = match self.band {
+            Band::Header => bands.header,
+            Band::Nav => bands.nav,
+            Band::Play => bands.play,
+        };
+        band + self.offset
+    }
+}
+
+fn track_safe_area(
+    time: Res<Time>,
+    camera: Query<&Projection, With<Camera2d>>,
+    window: Query<&Window, With<PrimaryWindow>>,
+    mut bands: ResMut<Bands>,
+    mut clock: Local<f32>,
+) {
+    *clock -= time.delta_secs();
+    if *clock > 0.0 {
+        return;
+    }
+    *clock = SAFE_POLL;
+
+    let Ok(Projection::Orthographic(projection)) = camera.single() else {
+        return;
+    };
+    let Ok(window) = window.single() else {
+        return;
+    };
+    let height = window.height();
+    if height <= 0.0 {
+        return;
+    }
+
+    let area = projection.area.height();
+    let per_pixel = area / height;
+    // A screen taller than the design rect already shows dead space above and
+    // below it, and that absorbs the inset before the bands have to.
+    let overhang = (area - CANVAS_H) / 2.0;
+    let raw = safe::insets();
+    let next = Bands::inset(raw.x * per_pixel - overhang, raw.y * per_pixel - overhang);
+
+    if *bands != next {
+        *bands = next;
+    }
+}
+
+fn place_anchored(bands: Res<Bands>, mut anchored: Query<(&Anchored, &mut Transform)>) {
+    for (anchor, mut transform) in &mut anchored {
+        let center = anchor.center(&bands);
+        transform.translation.x = center.x;
+        transform.translation.y = center.y;
+    }
+}
 
 pub const fn max_capacity(lines: u8) -> u8 {
     CAP[lines as usize - 1]
@@ -86,7 +225,7 @@ pub struct BoardGeometry {
 }
 
 impl BoardGeometry {
-    pub fn new(slots: impl Iterator<Item = (Range<u8>, u8)>) -> Self {
+    pub fn new(bands: Bands, slots: impl Iterator<Item = (Range<u8>, u8)>) -> Self {
         let mut used: Option<Rect> = None;
         for (lines, repr_column) in slots {
             let rect = Self { origin: Vec2::ZERO }.bottle_rect(lines, repr_column);
@@ -98,7 +237,7 @@ impl BoardGeometry {
 
         let center = used.map_or(Vec2::ZERO, |bounds| bounds.center());
         Self {
-            origin: PLAY_CENTER - center,
+            origin: bands.play - center,
         }
     }
 
@@ -141,11 +280,36 @@ pub fn check_capacity(capacity: u8, lines: u8) {
 mod tests {
     use std::range::Range;
 
-    use super::{BOARD_H, BOARD_W, BoardGeometry, COL_PITCH, LINE_PITCH, PLAY_CENTER, outer_h};
+    use super::{
+        BOARD_H, BOARD_W, Bands, BoardGeometry, COL_PITCH, LINE_PITCH, PLAY_CENTER, outer_h,
+    };
     use crate::theme::{BOTTLE_W, ITEM_H};
 
     fn slot(start: u8, end: u8, repr_column: u8) -> (Range<u8>, u8) {
         (Range { start, end }, repr_column)
+    }
+
+    #[test]
+    fn bands_without_insets_are_the_design_constants() {
+        let bands = Bands::default();
+        assert_eq!(bands.header, super::HEADER_CENTER);
+        assert_eq!(bands.nav, super::NAV_CENTER);
+        assert_eq!(bands.play, PLAY_CENTER);
+    }
+
+    #[test]
+    fn insets_move_the_bands_inward_and_recentre_the_play_area() {
+        let bands = Bands::inset(60.0, 40.0);
+        assert_eq!(bands.header.y, super::HEADER_CENTER.y - 60.0);
+        assert_eq!(bands.nav.y, super::NAV_CENTER.y + 40.0);
+        assert_eq!(bands.play.y, PLAY_CENTER.y - 10.0);
+    }
+
+    #[test]
+    fn the_board_keeps_priority_over_an_oversized_inset() {
+        let bands = Bands::inset(super::BAND_SLACK, super::BAND_SLACK);
+        let play = (bands.header.y - super::HEADER_H / 2.0) - (bands.nav.y + super::NAV_H / 2.0);
+        assert!((play - BOARD_H).abs() < 1e-3, "play area shrank to {play}");
     }
 
     #[test]
@@ -164,7 +328,7 @@ mod tests {
         let slots: Vec<_> = (0..3)
             .flat_map(|line| (0..6).map(move |column| slot(line, line + 1, column * 2)))
             .collect();
-        let geometry = BoardGeometry::new(slots.iter().copied());
+        let geometry = BoardGeometry::new(Bands::default(), slots.iter().copied());
 
         let first = geometry.bottle_rect(slots[0].0, slots[0].1);
         let last = geometry.bottle_rect(slots[17].0, slots[17].1);
@@ -177,7 +341,7 @@ mod tests {
     #[test]
     fn single_line_level_is_centered() {
         let slots = [slot(1, 2, 4), slot(1, 2, 6)];
-        let geometry = BoardGeometry::new(slots.iter().copied());
+        let geometry = BoardGeometry::new(Bands::default(), slots.iter().copied());
         let bounds = geometry
             .bottle_rect(slots[0].0, slots[0].1)
             .union(geometry.bottle_rect(slots[1].0, slots[1].1));
@@ -195,7 +359,7 @@ mod tests {
             slot(1, 2, 5),
             slot(1, 2, 7),
         ];
-        let geometry = BoardGeometry::new(slots.iter().copied());
+        let geometry = BoardGeometry::new(Bands::default(), slots.iter().copied());
         let wide = geometry.bottle_rect(slots[0].0, slots[0].1);
         let narrow = geometry.bottle_rect(slots[2].0, slots[2].1);
 
@@ -208,7 +372,7 @@ mod tests {
 
     #[test]
     fn items_stack_from_the_interior_bottom() {
-        let geometry = BoardGeometry::new(core::iter::empty());
+        let geometry = BoardGeometry::new(Bands::default(), core::iter::empty());
         let bottle = geometry.bottle_rect(Range { start: 0, end: 1 }, 0);
         let interior = geometry.interior_rect(bottle);
 
@@ -223,7 +387,7 @@ mod tests {
 
     #[test]
     fn multi_line_bottles_share_the_item_grid() {
-        let geometry = BoardGeometry::new(core::iter::empty());
+        let geometry = BoardGeometry::new(Bands::default(), core::iter::empty());
         let short = geometry.bottle_rect(Range { start: 1, end: 2 }, 0);
         let tall = geometry.bottle_rect(Range { start: 0, end: 2 }, 2);
 
