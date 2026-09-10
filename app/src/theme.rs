@@ -166,7 +166,13 @@ pub const Z_BOARD: f32 = 0.0;
 pub const Z_GLASS_BACK: f32 = 0.0;
 pub const Z_ITEM: f32 = 1.0;
 pub const Z_ITEM_SURFACE: f32 = 0.1;
+pub const Z_ITEM_BAND: f32 = 0.2;
+pub const Z_ITEM_LID: f32 = 0.3;
+pub const Z_ITEM_QUESTION: f32 = 0.4;
 pub const Z_GLASS_FRONT: f32 = 2.0;
+pub const Z_ROCKS: f32 = 2.4;
+pub const Z_ROPE: f32 = 2.6;
+pub const Z_PLUG: f32 = 2.8;
 pub const Z_BOTTLE: f32 = 0.0;
 pub const Z_HALO: f32 = -1.0;
 pub const Z_CORK: f32 = 3.0;
@@ -228,6 +234,33 @@ pub const CORK_H: f32 = 26.0;
 pub const CORK_CAP_H: f32 = 10.0;
 pub const CORK_RISE: f32 = 30.0;
 pub const CORK_SQUASH: f32 = 1.15;
+
+pub const QUESTION_W: f32 = 22.0;
+pub const QUESTION_H: f32 = 30.0;
+
+pub const BAND_RADIUS: f32 = 6.0;
+pub const BAND_STROKE: f32 = 3.5;
+pub const BAND_RIM_H: f32 = 5.0;
+
+pub const LID_W: f32 = 58.0;
+pub const LID_H: f32 = 15.0;
+pub const LID_ANGLE: f32 = -96.0 * PI / 180.0;
+pub const LID_RATE: f32 = 14.0;
+
+pub const ROCK_W: f32 = BOTTLE_W + 14.0;
+pub const ROCK_H: f32 = 44.0;
+pub const ROCK_DROP: f32 = 9.0;
+
+pub const ROPE_W: f32 = 32.0;
+pub const ROPE_H: f32 = 12.0;
+pub const ROPE_DROP: f32 = 14.0;
+
+pub const PLUG_W: f32 = 24.0;
+pub const PLUG_H: f32 = 26.0;
+pub const PLUG_SEAT: Vec2 = Vec2::new(0.0, -3.0);
+pub const PLUG_HANG: Vec2 = Vec2::new(-23.0, -25.0);
+pub const PLUG_HANG_ANGLE: f32 = -0.7;
+pub const PLUG_ARC: f32 = 12.0;
 
 pub const DROPLET_W: f32 = 12.0;
 pub const DROPLET_H: f32 = 16.0;

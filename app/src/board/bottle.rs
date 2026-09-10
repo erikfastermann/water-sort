@@ -9,6 +9,8 @@ use crate::input::Selection;
 use crate::theme;
 use crate::view::{BoardView, BottleView, MAX_BOTTLES};
 
+use super::feature;
+
 /// Fixed home position of a bottle; never moves.
 #[derive(Component)]
 pub struct BottleSlot;
@@ -272,6 +274,7 @@ pub fn spawn(
             Transform::from_xyz(0.0, theme::ITEM_H, theme::Z_ITEM_SURFACE),
             ChildOf(slot),
         ));
+        feature::spawn_item(commands, slot, art, view, index);
     }
 
     commands.spawn((
@@ -284,6 +287,15 @@ pub fn spawn(
         Transform::from_xyz(0.0, 0.0, theme::Z_GLASS_FRONT),
         ChildOf(holder),
     ));
+
+    feature::spawn_bottle(
+        commands,
+        holder,
+        art,
+        view,
+        bounds.min.y - center.y,
+        pivot.y,
+    );
 
     let cork_y = pivot.y + theme::CORK_H * 0.25;
     let cork = commands
@@ -321,7 +333,7 @@ pub fn spawn(
 
 /// How many items the bottle currently shows. During a pour this runs ahead of
 /// or behind the resting view, which already reflects the applied move.
-fn fill_level(view: &BottleView, pour: Option<&PourState>) -> f32 {
+pub(super) fn fill_level(view: &BottleView, pour: Option<&PourState>) -> f32 {
     match pour {
         Some(state) if state.plan.from == view.id => {
             f32::from(state.plan.from_height_before) - state.poured
@@ -331,6 +343,12 @@ fn fill_level(view: &BottleView, pour: Option<&PourState>) -> f32 {
         }
         _ => view.items.len() as f32,
     }
+}
+
+/// Index of the item carrying the liquid surface, for a fill level that may be
+/// mid-drain.
+pub(super) fn top_of(level: f32) -> Option<u8> {
+    (level > 0.0).then(|| level.ceil() as u8 - 1)
 }
 
 fn item_color(view: &BottleView, index: u8, pour: Option<&PourState>) -> Option<u8> {
@@ -434,6 +452,7 @@ pub fn sync_items(
     mut slots: Query<(&ItemSlot, &mut Sprite, &mut Visibility)>,
 ) {
     let pour = flow.pour();
+    let effects = flow.effects();
     for (slot, mut sprite, mut visibility) in &mut slots {
         let bottle = view.get(slot.bottle);
         let level = fill_level(bottle, pour.as_ref());
@@ -444,7 +463,10 @@ pub fn sync_items(
             Some(color) => {
                 *visibility = Visibility::Inherited;
                 sprite.custom_size = Some(Vec2::new(ITEM_W, fill * theme::ITEM_H));
-                sprite.color = theme::item_color(color);
+                sprite.color = theme::item_color(color).mix(
+                    &theme::ITEM_HIDDEN,
+                    feature::hidden_level(bottle, slot.index, effects),
+                );
             }
             None => *visibility = Visibility::Hidden,
         }
@@ -460,17 +482,21 @@ pub fn sync_surfaces(
     mut surfaces: Query<(&ItemSurface, &mut Sprite, &mut Visibility, &mut Transform)>,
 ) {
     let pour = flow.pour();
+    let effects = flow.effects();
     for (surface, mut sprite, mut visibility, mut transform) in &mut surfaces {
         let bottle = view.get(surface.bottle);
         let level = fill_level(bottle, pour.as_ref());
         let fill = (level - f32::from(surface.index)).clamp(0.0, 1.0);
-        let topmost = fill > 0.0 && level.ceil() as u32 == u32::from(surface.index) + 1;
+        let topmost = fill > 0.0 && top_of(level) == Some(surface.index);
         let color = item_color(bottle, surface.index, pour.as_ref());
 
         match topmost.then_some(color).flatten() {
             Some(color) => {
                 *visibility = Visibility::Inherited;
-                sprite.color = theme::item_color(color);
+                sprite.color = theme::item_color(color).mix(
+                    &theme::ITEM_HIDDEN,
+                    feature::hidden_level(bottle, surface.index, effects),
+                );
                 transform.translation.y = fill * theme::ITEM_H;
                 let fluid = fluids.get(surface.bottle);
                 let level = (fluid.tilt - fluid.glass)

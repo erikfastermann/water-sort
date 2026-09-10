@@ -1,4 +1,5 @@
 mod bottle;
+mod feature;
 
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
@@ -49,6 +50,10 @@ impl Plugin for BoardPlugin {
                         bottle::sync_surfaces,
                         bottle::apply_corks,
                         bottle::apply_halos,
+                        feature::sync_questions,
+                        feature::sync_bands,
+                        feature::sync_lids,
+                        feature::sync_plugs,
                     ),
                 )
                     .chain()

@@ -134,6 +134,17 @@ impl Flow {
         })
     }
 
+    /// The plan of the move that is still playing, plus how many seconds its
+    /// effects have been running. The clock is negative while the pour itself
+    /// is still on screen, so every effect reads as "not started yet".
+    pub fn effects(&self) -> Option<(&MovePlan, f32)> {
+        match &self.kind {
+            FlowKind::Pour { plan, .. } => Some((plan, -1.0)),
+            FlowKind::Effects { plan } => Some((plan, self.clock)),
+            _ => None,
+        }
+    }
+
     /// `Some` while the move that corks `bottle` is still playing. The value is
     /// seconds into the finalize animation, negative while the pour itself runs.
     pub fn cork_progress(&self, bottle: u8) -> Option<f32> {
@@ -162,10 +173,7 @@ impl Flow {
                 PourPhase::Stream => stream_time(plan.count),
                 PourPhase::Return => theme::POUR_RETURN,
             }),
-            FlowKind::Effects { plan } => Some(match plan.finalize {
-                Some(_) => theme::FINALIZE_SWIRL + theme::CORK_DROP,
-                None => 0.0,
-            }),
+            FlowKind::Effects { plan } => Some(effects_time(plan)),
         }
     }
 
@@ -192,6 +200,21 @@ impl Flow {
             } => FlowKind::Effects { plan },
         };
     }
+}
+
+/// Independent effects overlap, so the phase lasts as long as the slowest one.
+fn effects_time(plan: &MovePlan) -> f32 {
+    let mut longest = 0.0f32;
+    if plan.finalize.is_some() {
+        longest = longest.max(theme::FINALIZE_SWIRL + theme::CORK_DROP);
+    }
+    if plan.reveal_item.is_some() {
+        longest = longest.max(theme::REVEAL_ITEM);
+    }
+    if !plan.plug_toggled.is_empty() || plan.unplug.is_some() {
+        longest = longest.max(theme::PLUG_TOGGLE);
+    }
+    longest
 }
 
 pub fn stream_time(count: u8) -> f32 {
@@ -518,6 +541,22 @@ mod tests {
         flow.finish_now();
         flow.start_pour(plan(1, None));
         flow.advance(theme::POUR_TRAVEL + stream_time(1) + theme::POUR_RETURN);
+        assert!(!flow.is_busy());
+    }
+
+    #[test]
+    fn an_effect_without_a_finalize_still_gets_its_own_time() {
+        let mut flow = Flow::default();
+        flow.finish_now();
+        let mut script = plan(1, None);
+        script.plug_toggled = vec![3];
+        flow.start_pour(script);
+
+        flow.advance(theme::POUR_TRAVEL + stream_time(1) + theme::POUR_RETURN + 0.01);
+        let (_, clock) = flow.effects().expect("the plug is still swinging");
+        assert!(clock >= 0.0);
+
+        flow.advance(theme::PLUG_TOGGLE);
         assert!(!flow.is_busy());
     }
 

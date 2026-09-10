@@ -1,3 +1,5 @@
+use std::f32::consts::PI;
+
 use bevy::prelude::*;
 
 use crate::geometry::{LINES, outer_h};
@@ -7,10 +9,11 @@ use crate::raster::{
 };
 use crate::rng::Pcg32;
 use crate::theme::{
-    BASE_H, BOTTLE_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H, CORK_H, CORK_W, DROPLET_H, DROPLET_W,
-    GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ITEM_H, NAV_BUTTON,
-    NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL, NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H,
-    NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS,
+    BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H,
+    CORK_H, CORK_W, DROPLET_H, DROPLET_W, GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER,
+    HEADER_PILL_RADIUS, ITEM_H, LID_H, LID_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE,
+    NAV_PANEL, NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER,
+    NEXT_PILL_RADIUS, PLUG_H, PLUG_W, QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W,
 };
 
 const SCALE: u32 = 2;
@@ -46,6 +49,12 @@ pub struct Art {
     pub glass_front: [Handle<Image>; LINES],
     pub cork: Handle<Image>,
     pub cork_cap: Handle<Image>,
+    pub question: Handle<Image>,
+    pub metal_band: Handle<Image>,
+    pub metal_lid: Handle<Image>,
+    pub rock_base: Handle<Image>,
+    pub rope: Handle<Image>,
+    pub plug: Handle<Image>,
     pub droplet: Handle<Image>,
     pub header_pill: Plate,
     pub nav_panel: Plate,
@@ -96,6 +105,12 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         glass_front: std::array::from_fn(|line| glass_front(&mut images, line as u8 + 1)),
         cork: cork(&mut images),
         cork_cap: cork_cap(&mut images),
+        question: question(&mut images),
+        metal_band: metal_band(&mut images),
+        metal_lid: metal_lid(&mut images),
+        rock_base: rock_base(&mut images),
+        rope: rope(&mut images),
+        plug: plug(&mut images),
         droplet: droplet(&mut images),
         header_pill: plate(
             &mut images,
@@ -319,6 +334,197 @@ fn cork_cap(images: &mut Assets<Image>) -> Handle<Image> {
             rounded_rect(Rect::new(0.0, 0.0, CORK_W, CORK_CAP_H), CORK_RADIUS),
             SCALE as f32,
         ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+const QUESTION_RADIUS: f32 = 6.0;
+const QUESTION_STROKE: f32 = 5.0;
+
+/// Arc open at the lower left, a stem continuing straight down from where the
+/// arc terminates, and a dot.
+fn question(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(QUESTION_W, QUESTION_H));
+    let center = Vec2::new(QUESTION_W * 0.5, 10.0);
+    let arc = union(
+        intersect(
+            ring(center, QUESTION_RADIUS, QUESTION_STROKE),
+            half_plane(center, Vec2::Y),
+        ),
+        intersect(
+            ring(center, QUESTION_RADIUS, QUESTION_STROKE),
+            half_plane(center, Vec2::NEG_X),
+        ),
+    );
+    let stem = rounded_rect(
+        Rect::new(
+            center.x - QUESTION_STROKE * 0.5,
+            center.y + 3.0,
+            center.x + QUESTION_STROKE * 0.5,
+            22.0,
+        ),
+        QUESTION_STROKE * 0.5,
+    );
+    let dot = ellipse(Vec2::new(center.x, 26.8), Vec2::splat(3.2));
+    raster.shape(
+        scaled(union(union(arc, stem), dot), SCALE as f32),
+        solid([1.0; 4]),
+    );
+    raster.finish(images)
+}
+
+/// A frame with a rim at the top and the bottom, so the item colour still
+/// reads through the middle.
+fn metal_band(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(ITEM_W, ITEM_H));
+    let bounds = Rect::new(0.0, 0.0, ITEM_W, ITEM_H);
+    let rims = union(
+        rect(Rect::new(0.0, 0.0, ITEM_W, BAND_RIM_H)),
+        rect(Rect::new(0.0, ITEM_H - BAND_RIM_H, ITEM_W, ITEM_H)),
+    );
+    let metal = union(
+        outline(rounded_rect(bounds, BAND_RADIUS), BAND_STROKE),
+        rims,
+    );
+    raster.shape(
+        scaled(
+            intersect(metal, rounded_rect(bounds, BAND_RADIUS)),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.finish(images)
+}
+
+fn metal_lid(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(LID_W, LID_H));
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::new(0.0, 0.0, LID_W, LID_H), LID_H * 0.5),
+            SCALE as f32,
+        ),
+        item_shade,
+    );
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::new(7.0, 3.0, LID_W - 7.0, 6.5), 1.75),
+            SCALE as f32,
+        ),
+        solid([1.0, 1.0, 1.0, 0.5]),
+    );
+    raster.finish(images)
+}
+
+/// Left edge, right edge, top and tone of the rock mass and of each boulder
+/// resting on it, as fractions of the sprite, plus how far the boulder's peak
+/// rises above its shoulders.
+const ROCK_BOULDERS: [(f32, f32, f32, f32, f32); 5] = [
+    (0.00, 1.00, 0.58, 0.82, 0.00),
+    (0.00, 0.34, 0.30, 0.95, 0.10),
+    (0.20, 0.56, 0.12, 0.74, 0.08),
+    (0.42, 0.78, 0.34, 1.00, 0.09),
+    (0.66, 1.00, 0.20, 0.88, 0.09),
+];
+
+fn rock_boulder(index: usize) -> impl Fn(Vec2) -> f32 {
+    let (left, right, top, _, rise) = ROCK_BOULDERS[index];
+    let slab = rounded_rect(
+        Rect::new(ROCK_W * left, ROCK_H * top, ROCK_W * right, ROCK_H),
+        4.0,
+    );
+    let peak = triangle(
+        Vec2::new(ROCK_W * (left + right) * 0.5, ROCK_H * (top - rise)),
+        Vec2::new(ROCK_W * left + 1.0, ROCK_H * (top + 0.20)),
+        Vec2::new(ROCK_W * right - 1.0, ROCK_H * (top + 0.20)),
+    );
+    move |point| slab(point).min(peak(point))
+}
+
+fn rock_boulders() -> [impl Fn(Vec2) -> f32; ROCK_BOULDERS.len()] {
+    std::array::from_fn(rock_boulder)
+}
+
+/// Each boulder gets its own tone and the crease where two of them meet is
+/// darkened, so the silhouette reads as separate rocks rather than one slab.
+fn rock_base(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(ROCK_W, ROCK_H));
+    let size = raster.size();
+    let outline = rock_boulders();
+    raster.shape(
+        scaled(
+            move |point| {
+                outline
+                    .iter()
+                    .fold(f32::MAX, |near, rock| near.min(rock(point)))
+            },
+            SCALE as f32,
+        ),
+        in_pixels(size, {
+            let rocks = rock_boulders();
+            move |point| {
+                let point = point / SCALE as f32;
+                let (mut nearest, mut second, mut index) = (f32::MAX, f32::MAX, 0);
+                for (candidate, rock) in rocks.iter().enumerate() {
+                    let distance = rock(point);
+                    if distance < nearest {
+                        second = nearest;
+                        nearest = distance;
+                        index = candidate;
+                    } else if distance < second {
+                        second = distance;
+                    }
+                }
+                let crease = ((second - nearest) / 1.2).clamp(0.0, 1.0);
+                let level = ROCK_BOULDERS[index].3
+                    * (1.0 - 0.20 * (point.y / ROCK_H))
+                    * (0.78 + 0.22 * crease);
+                [level, level, level, 1.0]
+            }
+        }),
+    );
+    raster.finish(images)
+}
+
+fn rope(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(ROPE_W, ROPE_H));
+    raster.shape(
+        scaled(
+            rounded_rect(Rect::new(0.0, 0.0, ROPE_W, ROPE_H), ROPE_H * 0.5),
+            SCALE as f32,
+        ),
+        |uv| {
+            let twist = ((uv.x * 9.0 + uv.y * 1.6) * PI).sin() * 0.5 + 0.5;
+            let round = 1.0 - 0.3 * uv.y * uv.y;
+            let level = ((0.55 + 0.45 * twist) * round).clamp(0.0, 1.0);
+            [level, level, level, 1.0]
+        },
+    );
+    raster.finish(images)
+}
+
+const PLUG_CAP_H: f32 = 9.0;
+const PLUG_WAIST: f32 = 5.0;
+
+fn plug(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(PLUG_W, PLUG_H));
+    let cap = rounded_rect(Rect::new(0.0, 0.0, PLUG_W, PLUG_CAP_H), 4.0);
+    let shoulder = Vec2::new(2.0, PLUG_CAP_H - 2.0);
+    let foot = Vec2::new(PLUG_WAIST, PLUG_H);
+    let taper = union(
+        triangle(
+            shoulder,
+            Vec2::new(PLUG_W - shoulder.x, shoulder.y),
+            Vec2::new(PLUG_W - foot.x, foot.y),
+        ),
+        triangle(
+            shoulder,
+            Vec2::new(PLUG_W - foot.x, foot.y),
+            Vec2::new(foot.x, foot.y),
+        ),
+    );
+    raster.shape(
+        scaled(smooth_union(cap, taper, 2.0), SCALE as f32),
         item_shade,
     );
     raster.finish(images)
