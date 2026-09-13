@@ -643,6 +643,16 @@ impl State {
         ) as u8
     }
 
+    pub(crate) fn get_colors(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT * COLOR_BITS) }> {
+        let mut out = Bits::ZERO;
+        out.copy_from(
+            &self.content,
+            usize::from(bottle) * ITEM_COUNT * COLOR_BITS,
+            ITEM_COUNT * COLOR_BITS,
+        );
+        out
+    }
+
     fn set_color(&mut self, bottle: u8, item: u8, color: u8) {
         debug_assert_ne!(bottle, 0);
         self.content.set_n(
@@ -713,6 +723,17 @@ impl State {
     }
 
     #[cfg(feature = "hidable_items")]
+    pub(crate) fn get_items_hidden(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT) }> {
+        let mut out = Bits::ZERO;
+        out.copy_from(
+            &self.item_hidden,
+            usize::from(bottle) * ITEM_COUNT,
+            ITEM_COUNT,
+        );
+        out
+    }
+
+    #[cfg(feature = "hidable_items")]
     fn set_item_hidden(&mut self, bottle: u8, item: u8, hidden: bool) {
         debug_assert_ne!(bottle, 0);
         self.item_hidden
@@ -730,6 +751,17 @@ impl State {
             let _ = (bottle, item);
             false
         }
+    }
+
+    #[cfg(feature = "lockable_items")]
+    pub(crate) fn get_items_locked(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT) }> {
+        let mut out = Bits::ZERO;
+        out.copy_from(
+            &self.item_locked,
+            usize::from(bottle) * ITEM_COUNT,
+            ITEM_COUNT,
+        );
+        out
     }
 
     #[cfg(feature = "lockable_items")]
@@ -917,6 +949,24 @@ impl State {
         {
             let _ = (bottle, item);
             false
+        }
+    }
+
+    pub(crate) fn get_items_have_key(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT) }> {
+        #[cfg(feature = "lock_groups")]
+        {
+            let mut out = Bits::ZERO;
+            out.copy_from(
+                &self.item_has_key,
+                usize::from(bottle) * ITEM_COUNT,
+                ITEM_COUNT,
+            );
+            out
+        }
+        #[cfg(not(feature = "lock_groups"))]
+        {
+            let _ = bottle;
+            Bits::ZERO
         }
     }
 

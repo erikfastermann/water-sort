@@ -69,10 +69,10 @@ impl TryFrom<LevelData> for Level {
 }
 
 #[derive(Deserialize)]
-struct LevelData {
-    description: String,
-    layout: Vec<String>,
-    starting_state: StartingState,
+pub struct LevelData {
+    pub description: String,
+    pub layout: Vec<String>,
+    pub starting_state: StartingState,
 }
 
 #[cfg(test)]

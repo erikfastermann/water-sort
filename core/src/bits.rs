@@ -7,7 +7,7 @@ use std::{
 };
 
 // TODO: Proper Debug.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Bits<const BITS: usize>
 where
     StorageMapping<BITS>: StorageMapper,
@@ -70,6 +70,8 @@ impl<const BITS: usize> Bits<BITS>
 where
     StorageMapping<BITS>: StorageMapper,
 {
+    const BITS: usize = <StorageMapping<BITS> as StorageMapper>::Storage::BITS;
+
     pub const ZERO: Self = Self {
         v: <StorageMapping<BITS> as StorageMapper>::Storage::ZERO,
     };
@@ -100,6 +102,28 @@ where
 
     pub fn last(&self) -> Option<usize> {
         self.v.last()
+    }
+
+    pub fn copy_from<const SRC_BITS: usize>(
+        &mut self,
+        src: &Bits<SRC_BITS>,
+        offset: usize,
+        bits: usize,
+    ) where
+        StorageMapping<SRC_BITS>: StorageMapper,
+    {
+        // TODO: More efficient implementation.
+
+        debug_assert!(
+            offset
+                .checked_add(bits)
+                .is_some_and(|n| n <= Bits::<SRC_BITS>::BITS)
+        );
+        debug_assert!(bits <= Self::BITS);
+
+        for index in 0..bits {
+            self.v.set(index, src.v.has(offset + index));
+        }
     }
 }
 
@@ -141,7 +165,8 @@ impl StorageMapper for StorageMapping<4096> {
     type Storage = [u32; 128];
 }
 
-pub trait Storage: Debug + Clone + Copy + PartialEq + Eq + Hash {
+pub trait Storage: Debug + Clone + Copy + PartialEq + Eq + Hash + PartialOrd + Ord {
+    const BITS: usize;
     const ZERO: Self;
 
     fn has(&self, index: usize) -> bool;
@@ -162,6 +187,7 @@ pub trait Storage: Debug + Clone + Copy + PartialEq + Eq + Hash {
 /// to other fields, not unsafe, just wrong. This is done as a performance
 /// optimization. It is fine to construct this with N == 0, but not to use it.
 impl<const N: usize> Storage for [u32; N] {
+    const BITS: usize = N * 32;
     const ZERO: Self = [0; N];
 
     fn has(&self, index: usize) -> bool {

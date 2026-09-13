@@ -3,6 +3,7 @@ use std::{error::Error, fs, path::PathBuf};
 use clap::{Parser, Subcommand, builder::RangedU64ValueParser};
 
 use water_sort_core::{
+    level::{Level, LevelData},
     search::{DFS, MAX_SEARCH_DEPTH, bfs},
     state::{StartingState, State},
 };
@@ -14,9 +15,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         Command::Dfs { puzzle_path, .. } | Command::Bfs { puzzle_path, .. } => puzzle_path,
     };
 
-    let starting_state_raw = fs::read_to_string(puzzle_path)?;
-    let starting_state: StartingState = serde_json::from_str(&starting_state_raw)?;
-    let state = State::try_from(&starting_state)?;
+    let puzzle_raw = fs::read_to_string(puzzle_path)?;
+    let state = match serde_json::from_str::<LevelData>(&puzzle_raw) {
+        Ok(level_data) => Level::try_from(level_data)?.starting_state,
+        Err(_) => {
+            let starting_state: StartingState = serde_json::from_str(&puzzle_raw)?;
+            State::try_from(&starting_state)?
+        }
+    };
 
     let search_result = match args.command {
         Command::Dfs {

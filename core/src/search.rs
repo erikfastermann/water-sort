@@ -62,7 +62,7 @@ impl DFS {
         let error_marker = -remaining_depth - 1;
 
         // TODO: Skip calculating the hash on leaf nodes?
-        let hash = SearchState::from(&self.state).search_hash();
+        let hash = search_hash(&self.state);
         let visited = self.get_visited(hash);
         if visited != 0 {
             // This can give false negatives, which might prune useful search
@@ -159,7 +159,7 @@ pub fn bfs(input_state: &State, depth: i8) -> Result<i8, Box<dyn Error>> {
     let mut visited = HashSet::new();
     let mut queue = VecDeque::new();
     queue.push_back(SearchState::from(input_state));
-    visited.insert(SearchState::from(input_state).search_hash());
+    visited.insert(search_hash(input_state));
 
     let mut current_states = 1usize;
     let mut next_states = 0usize;
@@ -177,12 +177,10 @@ pub fn bfs(input_state: &State, depth: i8) -> Result<i8, Box<dyn Error>> {
 
         for mov in moves.iter().copied() {
             state.apply_move_unchecked(mov);
-            let next_search_state = SearchState::from(&state);
+            let hash = search_hash(&state);
 
-            let hash = next_search_state.search_hash();
-            if !visited.contains(&hash) {
-                visited.insert(hash);
-                queue.push_back(next_search_state);
+            if visited.insert(hash) {
+                queue.push_back(SearchState::from(&state));
                 next_states += 1;
             }
 
@@ -319,11 +317,135 @@ impl SearchState {
             color_curtain_active: self.color_curtain_active,
         }
     }
+}
 
-    fn search_hash(&self) -> u64 {
-        // Hash collision attacks should not be a problem in our use case.
-        let mut s = DefaultHasher::new();
-        self.hash(&mut s);
-        s.finish()
+#[derive(Clone, Copy, Default, Hash, PartialEq, Eq, PartialOrd, Ord)]
+struct HashBottle {
+    /// Only set for specific features.
+    bottle: u8,
+
+    height: u8,
+    capacity: u8,
+    content: Bits<{ storage_bits(ITEM_COUNT * COLOR_BITS) }>,
+    bottle_finalized: bool,
+
+    #[cfg(feature = "hidable_items")]
+    item_hidden: Bits<{ storage_bits(ITEM_COUNT) }>,
+
+    #[cfg(feature = "lockable_items")]
+    item_locked: Bits<{ storage_bits(ITEM_COUNT) }>,
+
+    #[cfg(feature = "immovable_bottles")]
+    bottle_immovable: bool,
+
+    #[cfg(feature = "pluggable_bottles")]
+    pluggable_bottle: bool,
+    #[cfg(feature = "pluggable_bottles")]
+    bottle_plugged: bool,
+
+    #[cfg(feature = "freezable_bottles")]
+    frozen: bool,
+
+    #[cfg(feature = "curtains")]
+    behind_curtain: bool,
+
+    #[cfg(feature = "safes")]
+    safe_counter: u8,
+
+    #[cfg(feature = "lock_groups")]
+    item_has_key: Bits<{ storage_bits(ITEM_COUNT) }>,
+    #[cfg(feature = "lock_groups")]
+    bottle_locked: bool,
+
+    #[cfg(feature = "colored_bottles")]
+    bottle_color: u8,
+
+    #[cfg(feature = "color_curtains")]
+    color_curtain_active: bool,
+}
+
+fn search_hash(state: &State) -> u64 {
+    // Hashing a state for search can use a canonicalized form. Let s1 and s2
+    // be two states which were reached by a (possibly different) sequence of
+    // moves from an initial state s0. If the reachable final states from s1
+    // and s2 are identical, then hash(s1) and hash(s2) should also be
+    // identical. This function tries to approach this goal, but there are many
+    // cases still remaining where identical final states do not result in an
+    // identical hash.
+    //
+    // Hash collision attacks should not be a problem in our use case.
+
+    let mut bottles = [HashBottle::default(); BOTTLE_COUNT];
+    let mut bottle_count = 0usize;
+
+    for bottle in state.bottles() {
+        let frozen = state.get_frozen(bottle);
+        let behind_curtain = state.get_behind_curtain(bottle);
+        let safe_counter = state.get_safe_counter(bottle);
+        let item_has_key = state.get_items_have_key(bottle);
+        let bottle_locked = state.get_bottle_locked(bottle);
+        let color_curtain_active = state.get_color_curtain_active(bottle);
+
+        let with_bottle_id = frozen
+            || behind_curtain
+            || safe_counter != 0
+            || bottle_locked
+            || color_curtain_active
+            || item_has_key != Bits::ZERO;
+
+        let hash_bottle = HashBottle {
+            bottle: if with_bottle_id { bottle } else { 0 },
+            height: state.get_height(bottle),
+            capacity: state.get_capacity(bottle),
+            content: state.get_colors(bottle),
+            bottle_finalized: state.get_bottle_finalized(bottle),
+
+            #[cfg(feature = "hidable_items")]
+            item_hidden: state.get_items_hidden(bottle),
+
+            #[cfg(feature = "lockable_items")]
+            item_locked: state.get_items_locked(bottle),
+
+            #[cfg(feature = "immovable_bottles")]
+            bottle_immovable: state.get_bottle_immovable(bottle),
+
+            #[cfg(feature = "pluggable_bottles")]
+            pluggable_bottle: state.get_pluggable_bottle(bottle),
+            #[cfg(feature = "pluggable_bottles")]
+            bottle_plugged: state.get_bottle_plugged(bottle),
+
+            #[cfg(feature = "freezable_bottles")]
+            frozen,
+
+            #[cfg(feature = "curtains")]
+            behind_curtain,
+
+            #[cfg(feature = "safes")]
+            safe_counter,
+
+            #[cfg(feature = "lock_groups")]
+            item_has_key,
+            #[cfg(feature = "lock_groups")]
+            bottle_locked,
+
+            #[cfg(feature = "colored_bottles")]
+            bottle_color: state.get_bottle_color(bottle),
+
+            #[cfg(feature = "color_curtains")]
+            color_curtain_active,
+        };
+
+        debug_assert!(bottle_count < bottles.len());
+        debug_assert!(bottles.len().is_power_of_two());
+
+        bottles[bottle_count & (bottles.len() - 1)] = hash_bottle;
+        bottle_count += 1;
     }
+
+    let bottles = &mut bottles[..bottle_count];
+    bottles.sort_unstable();
+
+    let mut s = DefaultHasher::new();
+    bottles.hash(&mut s);
+    s.finish()
 }
