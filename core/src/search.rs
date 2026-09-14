@@ -326,14 +326,14 @@ struct HashBottle {
 
     height: u8,
     capacity: u8,
-    content: Bits<{ storage_bits(ITEM_COUNT * COLOR_BITS) }>,
+    content: u64,
     bottle_finalized: bool,
 
     #[cfg(feature = "hidable_items")]
-    item_hidden: Bits<{ storage_bits(ITEM_COUNT) }>,
+    item_hidden: u16,
 
     #[cfg(feature = "lockable_items")]
-    item_locked: Bits<{ storage_bits(ITEM_COUNT) }>,
+    item_locked: u16,
 
     #[cfg(feature = "immovable_bottles")]
     bottle_immovable: bool,
@@ -353,7 +353,7 @@ struct HashBottle {
     safe_counter: u8,
 
     #[cfg(feature = "lock_groups")]
-    item_has_key: Bits<{ storage_bits(ITEM_COUNT) }>,
+    item_has_key: u16,
     #[cfg(feature = "lock_groups")]
     bottle_locked: bool,
 
@@ -391,7 +391,7 @@ fn search_hash(state: &State) -> u64 {
             || safe_counter != 0
             || bottle_locked
             || color_curtain_active
-            || item_has_key != Bits::ZERO;
+            || item_has_key != 0;
 
         let hash_bottle = HashBottle {
             bottle: if with_bottle_id { bottle } else { 0 },

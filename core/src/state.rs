@@ -5,13 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::bits::Bits;
 
-pub(crate) const ITEM_BITS: usize = bits_from_build_env(option_env!("WATER_SORT_ITEM_BITS"), 2, 4);
-pub(crate) const BOTTLE_BITS: usize =
-    bits_from_build_env(option_env!("WATER_SORT_BOTTLE_BITS"), 2, 5);
-pub(crate) const COLOR_BITS: usize =
-    bits_from_build_env(option_env!("WATER_SORT_COLOR_BITS"), 2, 4);
-pub(crate) const SAFE_COUNTER_BITS: usize =
-    bits_from_build_env(option_env!("WATER_SORT_SAFE_COUNTER_BITS"), 2, 3);
+pub(crate) const ITEM_BITS: usize = 4;
+pub(crate) const BOTTLE_BITS: usize = 5;
+pub(crate) const COLOR_BITS: usize = 4;
+pub(crate) const SAFE_COUNTER_BITS: usize = 3;
 
 /// Need an extra bit for the height and capacity.
 pub(crate) const BOTTLE_SIZE_BITS: usize = ITEM_BITS + 1;
@@ -26,40 +23,10 @@ pub const COLOR_COUNT: usize = 1 << COLOR_BITS;
 
 pub const MAX_SAFE_COUNTER: usize = (1 << SAFE_COUNTER_BITS) - 1;
 
-const fn bits_from_build_env(value: Option<&str>, min: usize, max: usize) -> usize {
-    let Some(value) = value else {
-        return max;
-    };
-
-    let bytes = value.as_bytes();
-    assert!(!bytes.is_empty());
-    assert!(bytes[0] != b'0');
-
-    let mut out = 0usize;
-    let mut i = 0;
-
-    while i < bytes.len() {
-        let b = bytes[i];
-        assert!(b.is_ascii_digit());
-
-        out = out
-            .checked_mul(10)
-            .unwrap()
-            .checked_add((b - b'0') as usize)
-            .unwrap();
-
-        i += 1;
-    }
-
-    assert!(out >= min);
-    assert!(out <= max);
-    out
-}
-
 pub(crate) const fn storage_bits(bits: usize) -> usize {
     assert!(bits <= 4096);
     let bits = bits.next_power_of_two();
-    if bits < 32 { 32 } else { bits }
+    if bits < 16 { 16 } else { bits }
 }
 
 /// Represents the current game state without history.
@@ -609,57 +576,40 @@ impl State {
     }
 
     pub fn get_height(&self, bottle: u8) -> u8 {
-        self.height
-            .get_n(usize::from(bottle) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
+        self.height.get_u8(usize::from(bottle))
     }
 
     fn set_height(&mut self, bottle: u8, height: u8) {
         debug_assert_ne!(bottle, 0);
-        self.height.set_n(
-            usize::from(bottle) * BOTTLE_SIZE_BITS,
-            BOTTLE_SIZE_BITS,
-            u16::from(height),
-        );
+        self.height.set_u8(usize::from(bottle), height);
     }
 
     pub fn get_capacity(&self, bottle: u8) -> u8 {
-        self.capacity
-            .get_n(usize::from(bottle) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
+        self.capacity.get_u8(usize::from(bottle))
     }
 
     fn set_capacity(&mut self, bottle: u8, capacity: u8) {
         debug_assert_ne!(bottle, 0);
-        self.capacity.set_n(
-            usize::from(bottle) * BOTTLE_SIZE_BITS,
-            BOTTLE_SIZE_BITS,
-            u16::from(capacity),
-        );
+        self.capacity.set_u8(usize::from(bottle), capacity);
     }
 
     pub fn get_color(&self, bottle: u8, item: u8) -> u8 {
-        self.content.get_n(
-            usize::from(bottle) * ITEM_COUNT * COLOR_BITS + usize::from(item) * COLOR_BITS,
-            COLOR_BITS,
-        ) as u8
+        self.content
+            .get_u4(usize::from(bottle) * ITEM_COUNT + usize::from(item))
     }
 
-    pub(crate) fn get_colors(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT * COLOR_BITS) }> {
-        let mut out = Bits::ZERO;
-        out.copy_from(
-            &self.content,
-            usize::from(bottle) * ITEM_COUNT * COLOR_BITS,
-            ITEM_COUNT * COLOR_BITS,
-        );
-        out
+    pub(crate) fn get_colors(&self, bottle: u8) -> u64 {
+        const {
+            assert!(ITEM_COUNT * COLOR_BITS == 64);
+        }
+
+        self.content.get_u64(usize::from(bottle))
     }
 
     fn set_color(&mut self, bottle: u8, item: u8, color: u8) {
         debug_assert_ne!(bottle, 0);
-        self.content.set_n(
-            usize::from(bottle) * ITEM_COUNT * COLOR_BITS + usize::from(item) * COLOR_BITS,
-            COLOR_BITS,
-            u16::from(color),
-        );
+        self.content
+            .set_u4(usize::from(bottle) * ITEM_COUNT + usize::from(item), color);
     }
 
     fn compute_bottle_finalized(&self, bottle: u8, add_count: u8, add_color: u8) -> bool {
@@ -695,18 +645,13 @@ impl State {
     }
 
     fn get_color_count(&self, color: u8) -> u8 {
-        self.color_count
-            .get_n(usize::from(color) * BOTTLE_SIZE_BITS, BOTTLE_SIZE_BITS) as u8
+        self.color_count.get_u8(usize::from(color))
     }
 
     fn set_color_count(&mut self, color: u8, count: u8) {
         debug_assert_ne!(color, 0);
         debug_assert!(usize::from(count) <= ITEM_COUNT);
-        self.color_count.set_n(
-            usize::from(color) * BOTTLE_SIZE_BITS,
-            BOTTLE_SIZE_BITS,
-            u16::from(count),
-        );
+        self.color_count.set_u8(usize::from(color), count);
     }
 
     pub fn get_item_hidden(&self, bottle: u8, item: u8) -> bool {
@@ -723,14 +668,12 @@ impl State {
     }
 
     #[cfg(feature = "hidable_items")]
-    pub(crate) fn get_items_hidden(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT) }> {
-        let mut out = Bits::ZERO;
-        out.copy_from(
-            &self.item_hidden,
-            usize::from(bottle) * ITEM_COUNT,
-            ITEM_COUNT,
-        );
-        out
+    pub(crate) fn get_items_hidden(&self, bottle: u8) -> u16 {
+        const {
+            assert!(ITEM_COUNT == 16);
+        }
+
+        self.item_hidden.get_u16(usize::from(bottle))
     }
 
     #[cfg(feature = "hidable_items")]
@@ -754,14 +697,12 @@ impl State {
     }
 
     #[cfg(feature = "lockable_items")]
-    pub(crate) fn get_items_locked(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT) }> {
-        let mut out = Bits::ZERO;
-        out.copy_from(
-            &self.item_locked,
-            usize::from(bottle) * ITEM_COUNT,
-            ITEM_COUNT,
-        );
-        out
+    pub(crate) fn get_items_locked(&self, bottle: u8) -> u16 {
+        const {
+            assert!(ITEM_COUNT == 16);
+        }
+
+        self.item_locked.get_u16(usize::from(bottle))
     }
 
     #[cfg(feature = "lockable_items")]
@@ -870,14 +811,8 @@ impl State {
 
     #[cfg(feature = "curtains")]
     pub(crate) fn get_curtain_range(&self, index: u8) -> Option<(u8, u8)> {
-        let from = self
-            .curtain_range
-            .get_n(usize::from(index) * (BOTTLE_BITS + 1) * 2, BOTTLE_BITS + 1)
-            as u8;
-        let to = self.curtain_range.get_n(
-            usize::from(index) * (BOTTLE_BITS + 1) * 2 + BOTTLE_BITS + 1,
-            BOTTLE_BITS + 1,
-        ) as u8;
+        let from = self.curtain_range.get_u8(usize::from(index) * 2);
+        let to = self.curtain_range.get_u8(usize::from(index) * 2 + 1);
         match (from, to) {
             (0, 0) => None,
             _ => Some((from, to)),
@@ -886,16 +821,8 @@ impl State {
 
     #[cfg(feature = "curtains")]
     fn set_curtain_range(&mut self, index: u8, from: u8, to: u8) {
-        self.curtain_range.set_n(
-            usize::from(index) * (BOTTLE_BITS + 1) * 2,
-            BOTTLE_BITS + 1,
-            u16::from(from),
-        );
-        self.curtain_range.set_n(
-            usize::from(index) * (BOTTLE_BITS + 1) * 2 + BOTTLE_BITS + 1,
-            BOTTLE_BITS + 1,
-            u16::from(to),
-        );
+        self.curtain_range.set_u8(usize::from(index) * 2, from);
+        self.curtain_range.set_u8(usize::from(index) * 2 + 1, to);
     }
 
     pub fn get_behind_curtain(&self, bottle: u8) -> bool {
@@ -919,8 +846,7 @@ impl State {
     pub fn get_safe_counter(&self, bottle: u8) -> u8 {
         #[cfg(feature = "safes")]
         {
-            self.safe_counter
-                .get_n(usize::from(bottle) * SAFE_COUNTER_BITS, SAFE_COUNTER_BITS) as u8
+            self.safe_counter.get_u4(usize::from(bottle))
         }
         #[cfg(not(feature = "safes"))]
         {
@@ -932,11 +858,7 @@ impl State {
     #[cfg(feature = "safes")]
     fn set_safe_counter(&mut self, bottle: u8, safe_counter: u8) {
         debug_assert_ne!(bottle, 0);
-        self.safe_counter.set_n(
-            usize::from(bottle) * SAFE_COUNTER_BITS,
-            SAFE_COUNTER_BITS,
-            u16::from(safe_counter),
-        );
+        self.safe_counter.set_u4(usize::from(bottle), safe_counter);
     }
 
     pub fn get_item_has_key(&self, bottle: u8, item: u8) -> bool {
@@ -952,21 +874,17 @@ impl State {
         }
     }
 
-    pub(crate) fn get_items_have_key(&self, bottle: u8) -> Bits<{ storage_bits(ITEM_COUNT) }> {
+    pub(crate) fn get_items_have_key(&self, bottle: u8) -> u16 {
+        const { assert!(ITEM_COUNT == 16) }
+
         #[cfg(feature = "lock_groups")]
         {
-            let mut out = Bits::ZERO;
-            out.copy_from(
-                &self.item_has_key,
-                usize::from(bottle) * ITEM_COUNT,
-                ITEM_COUNT,
-            );
-            out
+            self.item_has_key.get_u16(usize::from(bottle))
         }
         #[cfg(not(feature = "lock_groups"))]
         {
             let _ = bottle;
-            Bits::ZERO
+            0
         }
     }
 
@@ -1008,10 +926,7 @@ impl State {
     pub fn get_bottle_key(&self, bottle: u8) -> u16 {
         #[cfg(feature = "lock_groups")]
         {
-            self.bottle_key.get_n(
-                usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
-                BOTTLE_BITS + ITEM_BITS,
-            )
+            self.bottle_key.get_u16(usize::from(bottle))
         }
         #[cfg(not(feature = "lock_groups"))]
         {
@@ -1023,11 +938,7 @@ impl State {
     #[cfg(feature = "lock_groups")]
     fn set_bottle_key(&mut self, bottle: u8, key: u16) {
         debug_assert_ne!(bottle, 0);
-        self.bottle_key.set_n(
-            usize::from(bottle) * (BOTTLE_BITS + ITEM_BITS),
-            BOTTLE_BITS + ITEM_BITS,
-            key,
-        );
+        self.bottle_key.set_u16(usize::from(bottle), key);
     }
 
     pub fn get_bottle_locked(&self, bottle: u8) -> bool {
@@ -1045,8 +956,7 @@ impl State {
     pub fn get_bottle_color(&self, bottle: u8) -> u8 {
         #[cfg(feature = "colored_bottles")]
         {
-            self.bottle_color
-                .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
+            self.bottle_color.get_u4(usize::from(bottle))
         }
         #[cfg(not(feature = "colored_bottles"))]
         {
@@ -1058,18 +968,13 @@ impl State {
     #[cfg(feature = "colored_bottles")]
     fn set_bottle_color(&mut self, bottle: u8, color: u8) {
         debug_assert_ne!(bottle, 0);
-        self.bottle_color.set_n(
-            usize::from(bottle) * COLOR_BITS,
-            COLOR_BITS,
-            u16::from(color),
-        );
+        self.bottle_color.set_u4(usize::from(bottle), color);
     }
 
     pub fn get_color_curtain(&self, bottle: u8) -> u8 {
         #[cfg(feature = "color_curtains")]
         {
-            self.color_curtain
-                .get_n(usize::from(bottle) * COLOR_BITS, COLOR_BITS) as u8
+            self.color_curtain.get_u4(usize::from(bottle))
         }
         #[cfg(not(feature = "color_curtains"))]
         {
@@ -1081,11 +986,7 @@ impl State {
     #[cfg(feature = "color_curtains")]
     fn set_color_curtain(&mut self, bottle: u8, color: u8) {
         debug_assert_ne!(bottle, 0);
-        self.color_curtain.set_n(
-            usize::from(bottle) * COLOR_BITS,
-            COLOR_BITS,
-            u16::from(color),
-        );
+        self.color_curtain.set_u4(usize::from(bottle), color);
     }
 
     pub fn get_color_curtain_active(&self, bottle: u8) -> bool {
