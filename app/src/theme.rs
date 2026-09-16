@@ -108,7 +108,7 @@ pub const NAV_RING_IN: Color = Color::srgb_u8(0xE8, 0xB2, 0x4A);
 pub const NAV_GLYPH: Color = Color::srgb_u8(0xFF, 0xFF, 0xFF);
 pub const NAV_BTN_OFF: Color = Color::srgb_u8(0x3B, 0x34, 0x70);
 pub const NAV_GLYPH_OFF: Color = Color::srgb_u8(0x8A, 0x85, 0xB5);
-pub const OVERLAY_DIM: Color = Color::srgba_u8(0x0B, 0x06, 0x20, 140);
+pub const OVERLAY_DIM: Color = Color::srgba_u8(0x0B, 0x06, 0x20, 200);
 pub const BANNER_TEXT: Color = Color::srgb_u8(0xFF, 0xD8, 0x4D);
 pub const BANNER_SHADOW: Color = Color::srgb_u8(0x6B, 0x2E, 0x00);
 
@@ -305,13 +305,14 @@ pub const NAV_RING_IN_W: f32 = 3.0;
 pub const NAV_GLYPH_SIZE: f32 = 36.0;
 pub const NAV_GAP: f32 = 30.0;
 
-pub const NEXT_PILL: Vec2 = Vec2::new(236.0, 66.0);
+pub const NEXT_PILL: Vec2 = Vec2::new(252.0, 66.0);
 pub const NEXT_PILL_RADIUS: f32 = 33.0;
 pub const NEXT_PILL_BORDER: f32 = 4.0;
 pub const NEXT_FONT: f32 = 26.0;
 pub const NEXT_OFFSET: f32 = -84.0;
 pub const NEXT_GLYPH_SIZE: f32 = 28.0;
-pub const NEXT_GLYPH_X: f32 = 92.0;
+pub const NEXT_GLYPH_X: f32 = 90.0;
+pub const NEXT_LABEL_X: f32 = -20.0;
 
 pub const BANNER_FONT: f32 = 38.0;
 pub const BANNER_OFFSET: f32 = 26.0;

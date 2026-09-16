@@ -79,7 +79,7 @@ impl Overlay {
     fn dim(self) -> f32 {
         match self {
             Self::None => 0.0,
-            Self::Stuck => 0.5,
+            Self::Stuck => 0.75,
             Self::Complete | Self::Exhausted => 1.0,
         }
     }
@@ -203,7 +203,7 @@ fn spawn_hud(mut commands: Commands, art: Res<Art>, session: Res<Session>) {
     ));
     commands.spawn((
         label("NEXT LEVEL", theme::NEXT_FONT, theme::NAV_GLYPH),
-        Transform::from_xyz(-theme::NEXT_GLYPH_X * 0.5, 0.0, theme::Z_HUD_GLYPH),
+        Transform::from_xyz(theme::NEXT_LABEL_X, 0.0, theme::Z_HUD_GLYPH),
         ChildOf(next),
     ));
     commands.spawn((
