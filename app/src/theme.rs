@@ -12,21 +12,21 @@ const _: () = assert!(COLOR_COUNT <= MAX_COLOR_COUNT);
 
 const ITEM_COLORS_ALL: [Color; MAX_COLOR_COUNT] = [
     Color::srgb_u8(0xFF, 0x00, 0xFF),
-    Color::srgb_u8(0xF0, 0x47, 0x3E),
-    Color::srgb_u8(0xFF, 0x8A, 0x1E),
-    Color::srgb_u8(0xFF, 0xC6, 0x1A),
-    Color::srgb_u8(0xA6, 0xDB, 0x2B),
-    Color::srgb_u8(0x2C, 0xC4, 0x6B),
-    Color::srgb_u8(0x14, 0xBF, 0xAE),
-    Color::srgb_u8(0x35, 0xB7, 0xF2),
-    Color::srgb_u8(0x2F, 0x5B, 0xE0),
-    Color::srgb_u8(0x7A, 0x46, 0xE8),
-    Color::srgb_u8(0xC0, 0x49, 0xEC),
-    Color::srgb_u8(0xFF, 0x63, 0xC4),
-    Color::srgb_u8(0xC2, 0x1E, 0x5C),
-    Color::srgb_u8(0x9A, 0x5A, 0x34),
+    Color::srgb_u8(0xF3, 0x19, 0x2D),
+    Color::srgb_u8(0xF9, 0x85, 0x13),
+    Color::srgb_u8(0xFF, 0xCD, 0x16),
+    Color::srgb_u8(0x7C, 0xE6, 0x04),
+    Color::srgb_u8(0x0E, 0xB6, 0x5E),
+    Color::srgb_u8(0x15, 0xE6, 0xCC),
+    Color::srgb_u8(0x24, 0xB1, 0xF0),
+    Color::srgb_u8(0x01, 0x42, 0xD5),
+    Color::srgb_u8(0x82, 0x58, 0xFE),
+    Color::srgb_u8(0xCF, 0x00, 0xD6),
+    Color::srgb_u8(0xFF, 0x6B, 0xC5),
+    Color::srgb_u8(0xAE, 0x00, 0x65),
+    Color::srgb_u8(0x9B, 0x5A, 0x32),
     Color::srgb_u8(0x5A, 0x6E, 0x9E),
-    Color::srgb_u8(0xED, 0xE4, 0xCF),
+    Color::srgb_u8(0xF7, 0xEF, 0xDD),
 ];
 
 pub fn item_colors() -> &'static [Color] {
@@ -420,3 +420,41 @@ pub const Z_KEY: f32 = 7.6;
 pub const Z_TAG_CORD: f32 = 8.0;
 pub const Z_TAG: f32 = 8.2;
 pub const Z_ITEM_KEY: f32 = 0.5;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn oklab(color: Color) -> Vec3 {
+        let c = color.to_linear();
+        let l = (0.412_221_5 * c.red + 0.536_332_5 * c.green + 0.051_446_0 * c.blue).cbrt();
+        let m = (0.211_903_5 * c.red + 0.680_699_5 * c.green + 0.107_396_96 * c.blue).cbrt();
+        let s = (0.088_302_46 * c.red + 0.281_718_84 * c.green + 0.629_978_7 * c.blue).cbrt();
+        Vec3::new(
+            0.210_454_26 * l + 0.793_617_8 * m - 0.004_072_047 * s,
+            1.977_998_5 * l - 2.428_592_2 * m + 0.450_593_7 * s,
+            0.025_904_037 * l + 0.782_771_74 * m - 0.808_675_77 * s,
+        )
+    }
+
+    #[test]
+    fn item_colours_stay_apart_in_oklab() {
+        let colors: Vec<Vec3> = item_colors()[1..].iter().copied().map(oklab).collect();
+        let mut closest = f32::MAX;
+        let mut pair = (0, 0);
+        for (i, a) in colors.iter().enumerate() {
+            for (j, b) in colors.iter().enumerate().skip(i + 1) {
+                if a.distance(*b) < closest {
+                    closest = a.distance(*b);
+                    pair = (i + 1, j + 1);
+                }
+            }
+        }
+        assert!(
+            closest >= 0.16,
+            "item colours {} and {} are only {closest} apart in Oklab",
+            pair.0,
+            pair.1
+        );
+    }
+}
