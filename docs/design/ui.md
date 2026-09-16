@@ -14,13 +14,15 @@ all layouts, meaning consistent bottle and item heights and widths. Bottles
 which span multiple lines can have a larger maximum capacity to accommodate
 for the space between the lines, which is now filled in by the bottle. Bottle
 positions should be stable, not changed by additional features like freezing
-or curtains.
+or curtains. Consecutive items which can be poured together should be merged by
+not showing borders between these items with the same color.
 
 At the start of the level, the bottles should shift in from the side quickly.
-When clicking a bottle, the bottle should move up slightly (when pouring from
-this bottle is possible via can_move_from, otherwise do nothing). Then when
-clicking another bottle, a pouring animation should be played (when pouring
-from the first bottle into the second bottle is possible, otherwise do
+When clicking a bottle, the bottle should move up slightly with fluid
+animations (when pouring from this bottle is possible via can_move_from,
+otherwise do nothing). Then when clicking another bottle, a pouring animation
+should be played (when pouring from the first bottle into the second bottle is
+possible, otherwise select the second bottle if that is possible, otherwise do
 nothing), where the first bottle moves over the second bottle. Clicking a
 selected bottle again or clicking somewhere else deselects it, moving the
 bottle back down.
@@ -28,7 +30,7 @@ bottle back down.
 In general all animations should be smoothened and run quickly (typically
 hundreds of milliseconds for interactive animations). It should be possible
 to cancel running animations by clicking somewhere else, which goes to the next
-state immediately. The cancel click is swallowed, so no bottle is selected. The
+state immediately. When a bottle is clicked in this case, also select it. The
 required animations can be obtained by querying the returned move data from
 a successful pour and in some cases by creating a copy of the state (cheap)
 before the pour and diffing with the state after the move.
