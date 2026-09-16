@@ -1619,6 +1619,7 @@ impl Move {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Pours(Bits<{ storage_bits(BOTTLE_COUNT * BOTTLE_COUNT) }>);
 
 impl Pours {
