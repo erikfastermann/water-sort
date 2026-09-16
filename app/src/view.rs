@@ -4,7 +4,7 @@ use std::range::{Range, RangeInclusive};
 
 use bevy::prelude::*;
 use water_sort_core::layout::Layout;
-use water_sort_core::state::{BOTTLE_COUNT, Move as CoreMove, State, to_index};
+use water_sort_core::state::{BOTTLE_COUNT, Move as CoreMove, Pours, State, to_index};
 
 /// Upper bound for arrays indexed by bottle id; core reserves index 0.
 pub const MAX_BOTTLES: usize = BOTTLE_COUNT;
@@ -57,6 +57,7 @@ pub struct BoardView {
     pub lock_groups: Vec<(u16, RangeInclusive<u8>)>,
     pub solved: bool,
     pub stuck: bool,
+    pub pours: Option<Pours>,
 }
 
 impl BoardView {
@@ -66,14 +67,21 @@ impl BoardView {
             .map(|id| bottle(state, layout, id))
             .collect();
 
+        let pours = state.pours();
+
         Self {
             bottles,
             frozen_ranges: state.get_frozen_ranges().collect(),
             curtain_ranges: state.get_curtain_ranges().collect(),
             lock_groups: state.get_lock_group_ranges().collect(),
             solved: state.solved(),
-            stuck: state.pours().is_some_and(|pours| pours.is_empty()),
+            stuck: pours.is_some_and(|pours| pours.is_empty()),
+            pours,
         }
+    }
+
+    pub fn can_pour(&self, from: u8, to: u8) -> bool {
+        self.pours.is_some_and(|pours| pours.has(from, to))
     }
 
     pub fn get(&self, id: u8) -> &BottleView {

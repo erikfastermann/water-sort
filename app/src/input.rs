@@ -78,10 +78,12 @@ pub fn decide(selection: Option<u8>, clicked: Option<u8>, view: &BoardView) -> A
         None if view.get(id).can_move_from => Action::Select(id),
         None => Action::Ignore,
         Some(selected) if selected == id => Action::Deselect,
-        Some(selected) => Action::Pour {
+        Some(selected) if view.can_pour(selected, id) => Action::Pour {
             from: selected,
             to: id,
         },
+        Some(_) if view.get(id).can_move_from => Action::Select(id),
+        Some(_) => Action::Ignore,
     }
 }
 
@@ -119,7 +121,6 @@ pub fn handle_click(
         for particle in &particles {
             commands.entity(particle).try_despawn();
         }
-        return;
     }
 
     let clicked = targets.get(entity).ok().map(|target| target.id);
@@ -178,18 +179,45 @@ mod tests {
             Action::Deselect
         );
 
-        let other = view
+        let target = view
             .bottles
             .iter()
-            .find(|bottle| bottle.id != movable.id)
-            .expect("more than one bottle");
+            .find(|bottle| view.can_pour(movable.id, bottle.id))
+            .expect("a level starts with a legal pour");
         assert_eq!(
-            decide(Some(movable.id), Some(other.id), &view),
+            decide(Some(movable.id), Some(target.id), &view),
             Action::Pour {
                 from: movable.id,
-                to: other.id
+                to: target.id
             }
         );
+
+        let blocked = view
+            .bottles
+            .iter()
+            .find(|bottle| {
+                bottle.id != movable.id
+                    && !view.can_pour(movable.id, bottle.id)
+                    && bottle.can_move_from
+            })
+            .expect("an illegal target that is itself a legal source");
+        assert_eq!(
+            decide(Some(movable.id), Some(blocked.id), &view),
+            Action::Select(blocked.id)
+        );
+    }
+
+    /// Bottle 12 of `0003-bolted-down` is immovable and only partly filled, so
+    /// it is neither a legal source nor a legal target for bottle 2.
+    #[test]
+    fn an_illegal_target_that_is_no_source_is_ignored() {
+        let session = Session::new(3).expect("level exists");
+        let view = session.view();
+
+        assert!(view.get(12).interactable);
+        assert!(!view.get(12).can_move_from);
+        assert!(!view.can_pour(2, 12));
+        assert_eq!(decide(Some(2), Some(12), &view), Action::Ignore);
     }
 
     #[test]

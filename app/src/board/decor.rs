@@ -1344,6 +1344,7 @@ mod tests {
             lock_groups: vec![(11, RangeInclusive::from(2..=2))],
             solved: false,
             stuck: false,
+            pours: None,
         };
 
         assert!(linear_distance(theme::LOCK_COLORS[0], theme::item_color(7)) < LOCK_MIN_DISTANCE);
