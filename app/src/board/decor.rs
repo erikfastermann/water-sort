@@ -421,7 +421,11 @@ fn spawn_safe(
             ..default()
         },
         TextColor(theme::SAFE_TEXT),
-        Transform::from_xyz(offset, 0.0, theme::Z_SAFE_TEXT),
+        Transform::from_xyz(
+            offset + theme::SAFE_TEXT_OFFSET.x,
+            theme::SAFE_TEXT_OFFSET.y,
+            theme::Z_SAFE_TEXT,
+        ),
         ChildOf(safe),
     ));
 }
