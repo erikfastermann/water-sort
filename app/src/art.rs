@@ -466,18 +466,14 @@ fn question(images: &mut Assets<Image>) -> Handle<Image> {
     raster.finish(images)
 }
 
-/// A frame with a rim at the top and the bottom, so the item colour still
-/// reads through the middle.
+/// A frame with a rim along the bottom, so the item colour still reads through
+/// the middle. The top edge belongs to the lid, which is wider than the band.
 fn metal_band(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(ITEM_W, ITEM_H));
     let bounds = Rect::new(0.0, 0.0, ITEM_W, ITEM_H);
-    let rims = union(
-        rect(Rect::new(0.0, 0.0, ITEM_W, BAND_RIM_H)),
-        rect(Rect::new(0.0, ITEM_H - BAND_RIM_H, ITEM_W, ITEM_H)),
-    );
     let metal = union(
         outline(rounded_rect(bounds, BAND_RADIUS), BAND_STROKE),
-        rims,
+        rect(Rect::new(0.0, ITEM_H - BAND_RIM_H, ITEM_W, ITEM_H)),
     );
     raster.shape(
         scaled(
@@ -500,7 +496,10 @@ fn metal_lid(images: &mut Assets<Image>) -> Handle<Image> {
     );
     raster.shape(
         scaled(
-            rounded_rect(Rect::new(7.0, 3.0, LID_W - 7.0, 6.5), 1.75),
+            rounded_rect(
+                Rect::new(7.0, LID_H * 0.2, LID_W - 7.0, LID_H * 0.44),
+                LID_H * 0.12,
+            ),
             SCALE as f32,
         ),
         solid([1.0, 1.0, 1.0, 0.5]),

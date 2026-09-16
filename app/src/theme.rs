@@ -264,10 +264,10 @@ pub const QUESTION_H: f32 = 30.0;
 
 pub const BAND_RADIUS: f32 = 6.0;
 pub const BAND_STROKE: f32 = 3.5;
-pub const BAND_RIM_H: f32 = 5.0;
+pub const BAND_RIM_H: f32 = 2.0;
 
 pub const LID_W: f32 = 58.0;
-pub const LID_H: f32 = 15.0;
+pub const LID_H: f32 = 7.0;
 pub const LID_ANGLE: f32 = -96.0 * PI / 180.0;
 pub const LID_RATE: f32 = 14.0;
 

@@ -177,7 +177,7 @@ pub fn spawn_item(
                 custom_size: Some(Vec2::new(theme::LID_W, theme::LID_H)),
                 ..default()
             },
-            Transform::from_xyz(-theme::LID_W * 0.5, 0.0, 0.0),
+            Transform::from_xyz(-theme::LID_W * 0.5, -theme::LID_H * 0.5, 0.0),
             ChildOf(hinge),
         ));
     }
@@ -334,14 +334,17 @@ pub fn sync_lids(
         let bottle = view.get(lid.bottle);
         let level = fill_level(bottle, pour.as_ref());
         let fill = (level - f32::from(lid.index)).clamp(0.0, 1.0);
-        let shown =
-            fill > 0.0 && top_of(level) == Some(lid.index) && locked(bottle, lid.index, effects);
+        let shown = fill > 0.0 && locked(bottle, lid.index, effects);
 
         let lifting = selection.get() == Some(lid.bottle)
             || pour
                 .as_ref()
                 .is_some_and(|state| state.plan.from == lid.bottle);
-        let target = if lifting { 1.0 } else { 0.0 };
+        let target = if lifting && top_of(level) == Some(lid.index) {
+            1.0
+        } else {
+            0.0
+        };
         lid.open = lid
             .open
             .lerp(target, (dt * theme::LID_RATE).clamp(0.0, 1.0));
