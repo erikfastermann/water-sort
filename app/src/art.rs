@@ -945,27 +945,36 @@ fn lock_shackle(images: &mut Assets<Image>) -> Handle<Image> {
     raster.finish(images)
 }
 
-const KEY_BOW: f32 = 6.5;
-const KEY_SHAFT: f32 = 3.4;
+const KEY_BOW: f32 = 9.0;
+const KEY_RING: f32 = 5.6;
+const KEY_SHAFT: f32 = 5.6;
+const KEY_TOOTH_W: f32 = 4.5;
 
 /// Bow on the left, shaft to the right, two teeth hanging off the tip.
 fn key(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(KEY_W, KEY_H));
-    let bow = Vec2::new(KEY_BOW + 1.0, KEY_H * 0.5);
+    let bow = Vec2::new(KEY_BOW + KEY_RING * 0.5 + 0.5, KEY_H * 0.5);
     let shaft = rounded_rect(
         Rect::new(
             bow.x,
             KEY_H * 0.5 - KEY_SHAFT * 0.5,
-            KEY_W - 1.0,
+            KEY_W - 1.5,
             KEY_H * 0.5 + KEY_SHAFT * 0.5,
         ),
         KEY_SHAFT * 0.5,
     );
-    let tooth = |at: f32, drop: f32| rect(Rect::new(at, KEY_H * 0.5, at + 3.0, KEY_H * 0.5 + drop));
-    let teeth = union(tooth(KEY_W - 8.0, 5.0), tooth(KEY_W - 14.0, 3.5));
+    let tooth = |at: f32, drop: f32| {
+        rect(Rect::new(
+            at,
+            KEY_H * 0.5,
+            at + KEY_TOOTH_W,
+            KEY_H * 0.5 + drop,
+        ))
+    };
+    let teeth = union(tooth(KEY_W - 12.0, 7.5), tooth(KEY_W - 21.0, 5.5));
     raster.shape(
         scaled(
-            union(ring(bow, KEY_BOW, 3.6), union(shaft, teeth)),
+            union(ring(bow, KEY_BOW, KEY_RING), union(shaft, teeth)),
             SCALE as f32,
         ),
         item_shade,

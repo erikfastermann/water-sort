@@ -386,8 +386,8 @@ pub const LOCK_DROP: f32 = 210.0;
 pub const LOCK_TIP: f32 = 22.0 * PI / 180.0;
 pub const LOCK_PLATE: Color = Color::srgb_u8(0x2B, 0x1E, 0x4A);
 
-pub const KEY_W: f32 = 34.0;
-pub const KEY_H: f32 = 16.0;
+pub const KEY_W: f32 = 51.0;
+pub const KEY_H: f32 = 24.0;
 pub const KEY_BADGE: f32 = 0.62;
 pub const KEY_ARC: f32 = 70.0;
 pub const KEY_SPIN: f32 = 2.5;
