@@ -6,9 +6,9 @@ use bevy::prelude::*;
 use bevy::sprite::{Anchor, Text2d};
 
 use crate::anim::Flow;
-use crate::art::{Art, crop, sliced, tiled};
+use crate::art::{Art, CURTAIN_SAG, CURTAIN_SHEET, crop, sliced, tiled};
 use crate::fx::Particle;
-use crate::geometry::{BoardGeometry, COL_PITCH, CURTAIN_H};
+use crate::geometry::{BoardGeometry, COL_PITCH};
 use crate::rng::Pcg32;
 use crate::theme;
 use crate::view::{BoardView, BottleView, MovePlan};
@@ -40,7 +40,6 @@ pub struct Curtain {
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum CurtainRole {
     Sheet(u8),
-    Trim,
     Roll,
 }
 
@@ -260,34 +259,16 @@ fn spawn_curtain(
                 role: CurtainRole::Sheet(column),
             },
             Sprite {
-                image: art.curtain_cloth.clone(),
-                color: theme::CURTAIN_CLOTH,
-                custom_size: Some(Vec2::new(COL_PITCH, height)),
+                image: if column == 0 {
+                    art.curtain_end.clone()
+                } else {
+                    art.curtain_cloth.clone()
+                },
+                custom_size: Some(Vec2::new(COL_PITCH, height + 2.0 * CURTAIN_SAG)),
                 ..default()
             },
             Anchor::CENTER_LEFT,
             Transform::from_xyz(left + f32::from(column) * COL_PITCH, 0.0, theme::Z_CURTAIN),
-            ChildOf(curtain),
-        ));
-    }
-
-    for side in [1.0, -1.0] {
-        commands.spawn((
-            CurtainPart {
-                first,
-                role: CurtainRole::Trim,
-            },
-            Sprite {
-                color: theme::CURTAIN_TRIM,
-                custom_size: Some(Vec2::new(COL_PITCH, theme::CURTAIN_TRIM_H)),
-                ..default()
-            },
-            Anchor::CENTER_LEFT,
-            Transform::from_xyz(
-                left,
-                side * (half.y - theme::CURTAIN_TRIM_H * 0.5),
-                theme::Z_CURTAIN_TRIM,
-            ),
             ChildOf(curtain),
         ));
     }
@@ -301,10 +282,14 @@ fn spawn_curtain(
             Sprite {
                 image: art.curtain_roll.clone(),
                 color: theme::CURTAIN_ROLL,
-                custom_size: Some(Vec2::new(theme::CURTAIN_ROLL_W, height)),
+                custom_size: Some(Vec2::new(theme::CURTAIN_ROLL_W, height + 2.0 * CURTAIN_SAG)),
                 ..default()
             },
-            Transform::from_xyz(left, 0.0, theme::Z_CURTAIN_ROLL),
+            Transform::from_xyz(
+                left - theme::CURTAIN_ROLL_W * 0.5,
+                0.0,
+                theme::Z_CURTAIN_ROLL,
+            ),
             ChildOf(curtain),
         ))
         .id();
@@ -316,7 +301,7 @@ fn spawn_curtain(
                 custom_size: Some(Vec2::splat(theme::CURTAIN_KNOB)),
                 ..default()
             },
-            Transform::from_xyz(0.0, side * half.y, 0.1),
+            Transform::from_xyz(0.0, side * (half.y + CURTAIN_SAG), 0.1),
             ChildOf(roll),
         ));
     }
@@ -602,19 +587,19 @@ pub fn sync_curtains(
             CurtainRole::Sheet(column) => {
                 let fraction = (width - f32::from(column)).clamp(0.0, 1.0);
                 *visibility = shown(fraction > 0.0);
-                sprite.custom_size = Some(Vec2::new(fraction * COL_PITCH, height));
-                sprite.rect = Some(crop(Vec2::new(COL_PITCH, CURTAIN_H), fraction));
+                sprite.custom_size =
+                    Some(Vec2::new(fraction * COL_PITCH, height + 2.0 * CURTAIN_SAG));
+                sprite.rect = Some(crop(CURTAIN_SHEET, fraction));
 
-                let wave = (elapsed * theme::CURTAIN_WAVE_HZ * TAU + f32::from(column)).sin();
+                // Every column of a sheet has to breathe in step: the hems are
+                // part of the cloth now, so a per column phase would break them
+                // at the seam.
+                let wave = (elapsed * theme::CURTAIN_WAVE_HZ * TAU).sin();
                 transform.scale.y = 1.0 + theme::CURTAIN_WAVE * wave * (width.fract() * PI).sin();
-            }
-            CurtainRole::Trim => {
-                *visibility = shown(width > 0.0);
-                sprite.custom_size = Some(Vec2::new(width * COL_PITCH, theme::CURTAIN_TRIM_H));
             }
             CurtainRole::Roll => {
                 *visibility = shown(width > 0.0);
-                transform.translation.x = left + width * COL_PITCH;
+                transform.translation.x = left + width * COL_PITCH - theme::CURTAIN_ROLL_W * 0.5;
             }
         }
     }
@@ -969,16 +954,40 @@ fn spawn_color_curtain(
         .id();
 
     for strip in 0..strips {
+        let outer = strip == 0 || strip + 1 == strips;
         commands.spawn((
             ColorCurtainPart {
                 bottle: bottle.id,
                 tint: theme::COLOR_CURTAIN,
-                strip: Some(strip),
+                role: ColorCurtainRole::Strip(strip),
             },
             Sprite {
-                image: art.color_cloth.clone(),
+                image: match outer {
+                    true => art.color_end.clone(),
+                    false => art.color_cloth.clone(),
+                },
                 color: theme::COLOR_CURTAIN,
                 custom_size: Some(Vec2::new(width, bounds.height())),
+                flip_x: outer && strip > 0,
+                ..default()
+            },
+            Anchor::TOP_CENTER,
+            Transform::from_xyz(-half.x + (strip as f32 + 0.5) * width, 0.0, 0.0),
+            ChildOf(curtain),
+        ));
+    }
+
+    for strip in 0..strips {
+        commands.spawn((
+            ColorCurtainPart {
+                bottle: bottle.id,
+                tint: theme::COLOR_CURTAIN,
+                role: ColorCurtainRole::Hem(strip),
+            },
+            Sprite {
+                image: art.color_hem.clone(),
+                color: theme::COLOR_CURTAIN,
+                custom_size: Some(Vec2::new(width, theme::COLOR_CURTAIN_HEM)),
                 ..default()
             },
             Anchor::TOP_CENTER,
@@ -993,7 +1002,7 @@ fn spawn_color_curtain(
         ColorCurtainPart {
             bottle: bottle.id,
             tint: theme::COLOR_CURTAIN_SHADE,
-            strip: None,
+            role: ColorCurtainRole::Badge,
         },
         Sprite {
             image: art.bottle_icon.clone(),
@@ -1012,7 +1021,7 @@ fn spawn_color_curtain(
         ColorCurtainPart {
             bottle: bottle.id,
             tint: theme::item_color(color),
-            strip: None,
+            role: ColorCurtainRole::Badge,
         },
         Sprite {
             image: art.bottle_icon.clone(),
@@ -1036,11 +1045,18 @@ pub struct ColorCurtain {
     top: f32,
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ColorCurtainRole {
+    Strip(usize),
+    Hem(usize),
+    Badge,
+}
+
 #[derive(Component)]
 pub struct ColorCurtainPart {
     bottle: u8,
     tint: Color,
-    strip: Option<usize>,
+    role: ColorCurtainRole,
 }
 
 /// How far the door of `first` has swung, `0.0` until the key has landed.
@@ -1196,11 +1212,22 @@ fn spark(commands: &mut Commands, art: &Art, rng: &mut Pcg32, at: Vec2, color: C
     ));
 }
 
+/// How much of one strip is still hanging. `COLOR_CURTAIN_RIPPLE` staggers the
+/// strips, so the hem riding each strip's bottom edge has to read the same
+/// number.
+fn drawn_height(progress: f32, strip: usize, height: f32) -> f32 {
+    let u = (strip as f32 + 0.5) / theme::COLOR_CURTAIN_STRIPS as f32;
+    let ripple = (u * 2.0 * TAU).sin() * 0.5 + 0.5;
+    let ratio = theme::COLOR_CURTAIN_RIPPLE;
+    let drawn = (ease(progress) * (1.0 + ratio) - ratio * ripple).clamp(0.0, 1.0);
+    height * (1.0 - drawn)
+}
+
 pub fn sync_color_curtains(
     view: Res<BoardView>,
     flow: Res<Flow>,
     mut curtains: Query<(&ColorCurtain, &mut Transform, &mut Visibility)>,
-    mut parts: Query<(&ColorCurtainPart, &mut Sprite)>,
+    mut parts: Query<(&ColorCurtainPart, &mut Sprite, &mut Transform), Without<ColorCurtain>>,
 ) {
     let effects = flow.effects();
     let mut states: Vec<(u8, f32, f32)> = Vec::new();
@@ -1219,25 +1246,25 @@ pub fn sync_color_curtains(
         states.push((curtain.bottle, progress, curtain.height));
     }
 
-    for (part, mut sprite) in &mut parts {
+    for (part, mut sprite, mut transform) in &mut parts {
         let Some((_, progress, height)) =
             states.iter().copied().find(|(id, ..)| *id == part.bottle)
         else {
             continue;
         };
         let alpha = 1.0 - (progress / 0.85).clamp(0.0, 1.0);
+        sprite.color = part.tint.with_alpha(alpha);
 
-        match part.strip {
-            Some(strip) => {
-                let u = (strip as f32 + 0.5) / theme::COLOR_CURTAIN_STRIPS as f32;
-                let ripple = (u * 2.0 * TAU).sin() * 0.5 + 0.5;
-                let ratio = theme::COLOR_CURTAIN_RIPPLE;
-                let drawn = (ease(progress) * (1.0 + ratio) - ratio * ripple).clamp(0.0, 1.0);
+        match part.role {
+            ColorCurtainRole::Strip(strip) => {
                 let size = sprite.custom_size.unwrap_or_default();
-                sprite.custom_size = Some(Vec2::new(size.x, height * (1.0 - drawn)));
-                sprite.color = part.tint.with_alpha(alpha);
+                sprite.custom_size = Some(Vec2::new(size.x, drawn_height(progress, strip, height)));
             }
-            None => sprite.color = part.tint.with_alpha(alpha),
+            ColorCurtainRole::Hem(strip) => {
+                transform.translation.y =
+                    theme::COLOR_CURTAIN_HEM_LIP - drawn_height(progress, strip, height);
+            }
+            ColorCurtainRole::Badge => {}
         }
     }
 }

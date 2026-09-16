@@ -106,7 +106,9 @@ happens when a bottle in the frozen range is solved.
 
 Curtain ranges hide their underlying bottles, so they cannot be interacted
 with. Lifting part of a curtain, exactly one bottle per curtain group per
-finalized bottle from the highest index down, rolls it to the left.
+finalized bottle from the highest index down, rolls it to the left. Both kinds
+of curtain read as cloth rather than as rectangles: waved and hemmed edges,
+with the outer corners rounded.
 
 Safes hide a bottle, so it cannot be interacted with. The counter is shown on
 top of the relevant safe, decrementing when solving any bottle. A zero safe

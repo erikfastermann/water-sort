@@ -11,9 +11,10 @@ use crate::raster::{
 };
 use crate::rng::Pcg32;
 use crate::theme::{
-    BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, COLOR_CURTAIN_ICON_H,
-    COLOR_CURTAIN_ICON_W, CONFETTI_H, CONFETTI_W, CORK_BODY_W, CORK_CAP_H, CORK_H, CORK_W,
-    CURTAIN_KNOB, CURTAIN_ROLL_W, DOOR_BORDER, DOOR_GROOVE_W, DOOR_RADIUS, DROPLET_H, DROPLET_W,
+    BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, COLOR_CURTAIN_HEM,
+    COLOR_CURTAIN_HEM_LIP, COLOR_CURTAIN_ICON_H, COLOR_CURTAIN_ICON_W, CONFETTI_H, CONFETTI_W,
+    CORK_BODY_W, CORK_CAP_H, CORK_H, CORK_W, CURTAIN_CLOTH, CURTAIN_KNOB, CURTAIN_ROLL_W,
+    CURTAIN_TRIM, CURTAIN_TRIM_H, DOOR_BORDER, DOOR_GROOVE_W, DOOR_RADIUS, DROPLET_H, DROPLET_W,
     GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE, ICE_BASE_H,
     ICE_EDGE, ICE_SHARD_H, ICE_SHARD_W, ITEM_H, KEY_H, KEY_W, LID_H, LID_W, LOCK_H, LOCK_SHACKLE_H,
     LOCK_SHACKLE_W, LOCK_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL,
@@ -63,6 +64,7 @@ pub struct Art {
     pub ice_base: Handle<Image>,
     pub ice_shard: Handle<Image>,
     pub curtain_cloth: Handle<Image>,
+    pub curtain_end: Handle<Image>,
     pub curtain_roll: Handle<Image>,
     pub knob: Handle<Image>,
     pub safe_door: Plate,
@@ -76,6 +78,8 @@ pub struct Art {
     pub key: Handle<Image>,
     pub tag: Handle<Image>,
     pub color_cloth: Handle<Image>,
+    pub color_end: Handle<Image>,
+    pub color_hem: Handle<Image>,
     pub bottle_icon: Handle<Image>,
     pub header_pill: Plate,
     pub nav_panel: Plate,
@@ -153,7 +157,8 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         droplet: droplet(&mut images),
         ice_base: ice_base(&mut images),
         ice_shard: ice_shard(&mut images),
-        curtain_cloth: curtain_cloth(&mut images),
+        curtain_cloth: curtain_cloth(&mut images, false),
+        curtain_end: curtain_cloth(&mut images, true),
         curtain_roll: curtain_roll(&mut images),
         knob: knob(&mut images),
         safe_door: plate(&mut images, SAFE_MIN, SAFE_RADIUS, SAFE_BORDER),
@@ -166,7 +171,9 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         lock_shackle: lock_shackle(&mut images),
         key: key(&mut images),
         tag: tag(&mut images),
-        color_cloth: color_cloth(&mut images),
+        color_cloth: color_cloth(&mut images, false),
+        color_end: color_cloth(&mut images, true),
+        color_hem: color_hem(&mut images),
         bottle_icon: bottle_icon(&mut images),
         header_pill: plate(
             &mut images,
@@ -745,19 +752,67 @@ fn ice_shard(images: &mut Assets<Image>) -> Handle<Image> {
     raster.finish(images)
 }
 
-fn curtain_cloth(images: &mut Assets<Image>) -> Handle<Image> {
-    let mut raster = raster(Vec2::new(COL_PITCH, CURTAIN_H));
+const CURTAIN_FOLDS: f32 = 4.0;
+const CURTAIN_GATHERS: f32 = 2.0;
+const CURTAIN_ROUND: f32 = 14.0;
+
+/// How far the cloth waves out of its bounds. The sheet is authored taller than
+/// the span it covers and hangs a rigid ribbon inside that, so the wave never
+/// uncovers the bottle at the top of a swag.
+pub const CURTAIN_SAG: f32 = 9.0;
+pub const CURTAIN_SHEET: Vec2 = Vec2::new(COL_PITCH, CURTAIN_H + 2.0 * CURTAIN_SAG);
+const CURTAIN_RIBBON: f32 = CURTAIN_H + CURTAIN_SAG;
+
+/// How far the cloth hangs at `u`, over exactly one `COL_PITCH` period. Both
+/// the value and the slope vanish at either end, so a tile seam falls inside a
+/// swag and neighbouring columns of a range read as one sheet.
+fn curtain_drop(u: f32) -> f32 {
+    let gather = 0.5 - 0.5 * (u * CURTAIN_GATHERS * TAU).cos();
+    let swag = 0.5 - 0.5 * (u * TAU).cos();
+    CURTAIN_SAG * (0.55 * gather + 0.45 * swag)
+}
+
+/// The sheet is a ribbon of constant height riding the drop, so both hems wave
+/// together and the cloth between them never stretches.
+fn curtain_sheet(point: Vec2) -> f32 {
+    let drop = curtain_drop(point.x / COL_PITCH);
+    (drop - point.y).max(point.y - drop - CURTAIN_RIBBON)
+}
+
+fn srgb_vec(color: Color) -> Vec3 {
+    let color = color.to_srgba();
+    Vec3::new(color.red, color.green, color.blue)
+}
+
+/// One column of a range curtain. The hems are baked in rather than laid over
+/// the sheet, so they follow the wave, the reveal and the breathing for free;
+/// the sprite is therefore drawn untinted.
+fn curtain_cloth(images: &mut Assets<Image>, round_left: bool) -> Handle<Image> {
+    let mut raster = raster(CURTAIN_SHEET);
     let size = raster.size();
-    let bounds = raster.bounds();
+    let cloth = srgb_vec(CURTAIN_CLOTH);
+    let trim = srgb_vec(CURTAIN_TRIM);
+    let end = rounded_rect(
+        Rect::new(0.0, 0.0, COL_PITCH + 2.0 * CURTAIN_ROUND, CURTAIN_RIBBON),
+        CURTAIN_ROUND,
+    );
+    let sheet = move |point: Vec2| {
+        if round_left {
+            curtain_sheet(point).max(end(point))
+        } else {
+            curtain_sheet(point)
+        }
+    };
     raster.shape(
-        rect(bounds),
+        scaled(sheet, SCALE as f32),
         in_pixels(size, |point| {
             let point = point / SCALE as f32;
-            let (u, v) = (point.x / COL_PITCH, point.y / CURTAIN_H);
-            let fold = (u * 4.0 * TAU).sin() * 0.5 + 0.5;
-            let ends = 1.0 - 0.30 * (v * 2.0 - 1.0).abs().powi(3);
-            let level = ((0.58 + 0.42 * fold) * ends).clamp(0.0, 1.0);
-            [level, level, level, 1.0]
+            let u = point.x / COL_PITCH;
+            let local = point.y - curtain_drop(u);
+            let fold = (u * CURTAIN_FOLDS * TAU).sin() * 0.5 + 0.5;
+            let body = (local.min(CURTAIN_RIBBON - local) - CURTAIN_TRIM_H + 0.5).clamp(0.0, 1.0);
+            let tone = (trim * (0.78 + 0.22 * fold)).lerp(cloth * (0.58 + 0.42 * fold), body);
+            [tone.x, tone.y, tone.z, 1.0]
         }),
     );
     raster.finish(images)
@@ -1035,27 +1090,73 @@ fn tag(images: &mut Assets<Image>) -> Handle<Image> {
     raster.finish(images)
 }
 
+const COLOR_FOLD_LEVEL: f32 = 0.60;
+const COLOR_HEM_LEVEL: f32 = 0.85;
+const COLOR_STRIP_ROUND: f32 = 5.0;
+
+/// One fold per strip, mirror symmetric so the crease falls on the seam and an
+/// end strip can be flipped for its rounded corner without breaking the run.
+fn color_fold(u: f32) -> f32 {
+    0.5 - 0.5 * (u * TAU).cos()
+}
+
 /// One vertical strip of a colour curtain. The fold pattern is exactly one
-/// period wide, so neighbouring strips join without a seam.
-fn color_cloth(images: &mut Assets<Image>) -> Handle<Image> {
+/// period wide, so neighbouring strips join without a seam. The outermost two
+/// strips round the corner they own, which is what keeps the lifted curtain
+/// from reading as a rectangle; `round_left` is mirrored with `flip_x`.
+fn color_cloth(images: &mut Assets<Image>, round_left: bool) -> Handle<Image> {
     let mut raster = raster(COLOR_CURTAIN_STRIP);
     let size = raster.size();
-    let bounds = raster.bounds();
+    let panel = rect(Rect::from_corners(Vec2::ZERO, COLOR_CURTAIN_STRIP));
+    let corner = rounded_rect(
+        Rect::from_corners(
+            Vec2::ZERO,
+            COLOR_CURTAIN_STRIP + Vec2::splat(2.0 * COLOR_STRIP_ROUND),
+        ),
+        COLOR_STRIP_ROUND,
+    );
+    let strip = move |point: Vec2| {
+        if round_left {
+            panel(point).max(corner(point))
+        } else {
+            panel(point)
+        }
+    };
     raster.shape(
-        rect(bounds),
+        scaled(strip, SCALE as f32),
         in_pixels(size, |point| {
             let point = point / SCALE as f32;
             let (u, v) = (
                 point.x / COLOR_CURTAIN_STRIP.x,
                 point.y / COLOR_CURTAIN_STRIP.y,
             );
-            let fold = (u * TAU).sin() * 0.5 + 0.5;
-            let rail = if (0.05..=0.95).contains(&v) {
-                1.0
-            } else {
-                0.74
-            };
-            let level = ((0.60 + 0.40 * fold) * rail).clamp(0.0, 1.0);
+            let fold = color_fold(u);
+            let rail = if v < 0.05 { 0.74 } else { 1.0 };
+            let level = ((COLOR_FOLD_LEVEL + 0.40 * fold) * rail).clamp(0.0, 1.0);
+            [level, level, level, 1.0]
+        }),
+    );
+    raster.finish(images)
+}
+
+/// The weighted hem that rides the bottom edge of one colour curtain strip. The
+/// lobe touches zero at both ends, so a run of strips scallops instead of
+/// ending in a straight line.
+fn color_hem(images: &mut Assets<Image>) -> Handle<Image> {
+    let mut raster = raster(Vec2::new(COLOR_CURTAIN_STRIP.x, COLOR_CURTAIN_HEM));
+    let size = raster.size();
+    let lobe = |point: Vec2| {
+        let u = point.x / COLOR_CURTAIN_STRIP.x;
+        let bottom = COLOR_CURTAIN_HEM_LIP
+            + (COLOR_CURTAIN_HEM - COLOR_CURTAIN_HEM_LIP) * (u * PI).sin().powf(0.7);
+        (-point.y).max(point.y - bottom)
+    };
+    raster.shape(
+        scaled(lobe, SCALE as f32),
+        in_pixels(size, |point| {
+            let point = point / SCALE as f32;
+            let fold = color_fold(point.x / COLOR_CURTAIN_STRIP.x);
+            let level = (COLOR_HEM_LEVEL * (COLOR_FOLD_LEVEL + 0.40 * fold)).clamp(0.0, 1.0);
             [level, level, level, 1.0]
         }),
     );

@@ -83,7 +83,7 @@ pub const CURTAIN_CLOTH: Color = Color::srgb_u8(0xD6, 0x15, 0x4F);
 pub const CURTAIN_TRIM: Color = Color::srgb_u8(0xF0, 0xB4, 0x29);
 pub const CURTAIN_ROLL: Color = Color::srgb_u8(0xB8, 0x10, 0x3F);
 pub const COLOR_CURTAIN: Color = Color::srgb_u8(0xF3, 0xC7, 0xC4);
-pub const COLOR_CURTAIN_SHADE: Color = Color::srgb_u8(0xD8, 0x9E, 0x9C);
+pub const COLOR_CURTAIN_SHADE: Color = Color::srgb_u8(0x8C, 0x52, 0x50);
 
 pub const SAFE_DOOR: Color = Color::srgb_u8(0x13, 0x30, 0x7C);
 pub const SAFE_PLATE: Color = Color::srgb_u8(0x2D, 0x6B, 0xE0);
@@ -180,7 +180,6 @@ pub const Z_GLASS_FRONT: f32 = 2.0;
 pub const Z_ROCKS: f32 = 2.4;
 pub const Z_ICE_BASE: f32 = 3.2;
 pub const Z_CURTAIN: f32 = 5.0;
-pub const Z_CURTAIN_TRIM: f32 = 5.1;
 pub const Z_CURTAIN_ROLL: f32 = 5.2;
 pub const Z_SAFE: f32 = 6.0;
 pub const Z_SAFE_FACE: f32 = 0.1;
@@ -403,6 +402,9 @@ pub const TAG_MAX_SWING: f32 = 0.5;
 
 pub const COLOR_CURTAIN_STRIPS: usize = 6;
 pub const COLOR_CURTAIN_RIPPLE: f32 = 0.09;
+pub const COLOR_CURTAIN_HEM: f32 = 11.0;
+/// The flat part of the hem, which overlaps the strip it hangs from.
+pub const COLOR_CURTAIN_HEM_LIP: f32 = 3.0;
 pub const COLOR_CURTAIN_DRIFT: f32 = 20.0;
 pub const COLOR_CURTAIN_ICON_W: f32 = 30.0;
 pub const COLOR_CURTAIN_ICON_H: f32 = 44.0;
