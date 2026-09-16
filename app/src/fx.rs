@@ -193,7 +193,7 @@ fn drive_particles(
     for (entity, mut particle, mut transform, mut sprite) in &mut particles {
         particle.life -= delta;
         if particle.life <= 0.0 {
-            commands.entity(entity).despawn();
+            commands.entity(entity).try_despawn();
             continue;
         }
 

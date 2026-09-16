@@ -117,7 +117,7 @@ pub fn handle_click(
         game.flow.finish_now();
         selection.clear();
         for particle in &particles {
-            commands.entity(particle).despawn();
+            commands.entity(particle).try_despawn();
         }
         return;
     }

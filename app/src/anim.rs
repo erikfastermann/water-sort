@@ -339,7 +339,7 @@ fn drive_stream(
     let state = flow.pour();
     let Some(state) = state.filter(|state| state.phase == PourPhase::Stream) else {
         for (entity, ..) in &droplets {
-            commands.entity(entity).despawn();
+            commands.entity(entity).try_despawn();
         }
         *landed = 0;
         return;
@@ -425,7 +425,7 @@ fn drive_swirl(
     } = &stage;
     let Some((bottle, elapsed)) = flow.swirl() else {
         for (entity, ..) in &stars {
-            commands.entity(entity).despawn();
+            commands.entity(entity).try_despawn();
         }
         return;
     };
