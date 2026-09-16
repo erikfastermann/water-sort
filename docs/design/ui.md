@@ -87,10 +87,10 @@ Items which are hidden replace their color with black and show a question mark
 on top. Additional item specific features are also invisible. The top item of a
 bottle can never be hidden. Revealing a hidden item fades it in quickly.
 
-Locked items are shown with a small metal border. When a locked item is on top,
-also show a metal top for this item. When a bottle is shifted up for a move and
-a locked item is on top, the metal cover should open up. The lock is consumed
-when the item is poured out.
+Locked items are shown with a small metal border and a slightly bigger metal
+cover on top. When a bottle is shifted up for a move and a locked item is on
+top, the metal cover should open up. The lock is consumed when the item is
+poured out.
 
 Immovable bottles have a bottom with small spiky rocks, showing this bottle is
 locked in place.
