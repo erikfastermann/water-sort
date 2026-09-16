@@ -84,8 +84,8 @@ pub struct Fluid {
     /// Current rotation of the glass, so a surface can counter-rotate to stay
     /// level in world space.
     pub glass: f32,
-    last_x: f32,
-    last_velocity_x: f32,
+    last: Vec2,
+    last_velocity: Vec2,
     tracked: bool,
 }
 
@@ -113,24 +113,26 @@ impl Fluids {
         self.0[usize::from(id)].glass = angle;
     }
 
-    fn integrate(&mut self, id: u8, x: f32, dt: f32) {
+    fn integrate(&mut self, id: u8, position: Vec2, dt: f32) {
         let fluid = &mut self.0[usize::from(id)];
-        let velocity_x = if fluid.tracked {
-            (x - fluid.last_x) / dt
+        let velocity = if fluid.tracked {
+            (position - fluid.last) / dt
         } else {
-            0.0
+            Vec2::ZERO
         };
         let acceleration = if fluid.tracked {
-            (velocity_x - fluid.last_velocity_x) / dt
+            (velocity - fluid.last_velocity) / dt
         } else {
-            0.0
+            Vec2::ZERO
         };
         fluid.tracked = true;
-        fluid.last_x = x;
-        fluid.last_velocity_x = velocity_x;
+        fluid.last = position;
+        fluid.last_velocity = velocity;
 
-        let drive = (-acceleration * theme::FLUID_DRIVE)
-            .clamp(-theme::FLUID_DRIVE_MAX, theme::FLUID_DRIVE_MAX);
+        let drive = (-acceleration.x * theme::FLUID_DRIVE)
+            .clamp(-theme::FLUID_DRIVE_MAX, theme::FLUID_DRIVE_MAX)
+            + (-acceleration.y * theme::FLUID_DRIVE_Y)
+                .clamp(-theme::FLUID_DRIVE_Y_MAX, theme::FLUID_DRIVE_Y_MAX);
         fluid.velocity +=
             (drive - theme::FLUID_STIFFNESS * fluid.tilt - theme::FLUID_DAMPING * fluid.velocity)
                 * dt;
@@ -446,7 +448,7 @@ pub fn apply_fluid(
 ) {
     let dt = time.delta_secs().clamp(1.0 / 240.0, 1.0 / 30.0);
     for (root, transform) in &roots {
-        fluids.integrate(root.id, transform.translation.x, dt);
+        fluids.integrate(root.id, transform.translation.truncate(), dt);
     }
 }
 

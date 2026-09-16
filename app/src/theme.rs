@@ -219,6 +219,10 @@ pub const FLUID_MAX_TILT: f32 = 0.22;
 pub const SURFACE_MAX_TILT: f32 = 0.32;
 pub const FLUID_DRIVE: f32 = 0.0016;
 pub const FLUID_DRIVE_MAX: f32 = 6.0;
+/// A lift is a much harder shove than a pour slide, so the vertical drive gets
+/// its own weight and its own ceiling instead of sharing the horizontal ones.
+pub const FLUID_DRIVE_Y: f32 = 0.012;
+pub const FLUID_DRIVE_Y_MAX: f32 = 140.0;
 pub const FLUID_LAND_KICK: f32 = 3.5;
 pub const FLUID_POUR_KICK: f32 = 1.8;
 
