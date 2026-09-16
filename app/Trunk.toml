@@ -1,3 +1,5 @@
+trunk-version = "^0.21.14"
+
 [build]
 target = "index.html"
 dist = "dist"
@@ -8,3 +10,6 @@ release = true
 addresses = ["0.0.0.0"]
 port = 8080
 open = false
+
+[tools]
+wasm_opt = "version_123"
