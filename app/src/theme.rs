@@ -179,8 +179,6 @@ pub const Z_ITEM_QUESTION: f32 = 0.4;
 pub const Z_GLASS_FRONT: f32 = 2.0;
 pub const Z_ROCKS: f32 = 2.4;
 pub const Z_ICE_BASE: f32 = 3.2;
-pub const Z_ICE_FROST: f32 = 3.4;
-pub const Z_ICE_FRAME: f32 = 3.5;
 pub const Z_CURTAIN: f32 = 5.0;
 pub const Z_CURTAIN_TRIM: f32 = 5.1;
 pub const Z_CURTAIN_ROLL: f32 = 5.2;
@@ -336,10 +334,7 @@ pub const CONFETTI_SPIN: f32 = 6.0;
 
 pub const FLUID_NAV_KICK: f32 = 2.5;
 
-pub const ICE_BASE_H: f32 = 50.0;
-pub const ICE_CROWN_H: f32 = 38.0;
-pub const ICE_FRAME_W: f32 = 4.0;
-pub const ICE_FRAME_ALPHA: f32 = 0.5;
+pub const ICE_BASE_H: f32 = 58.0;
 pub const ICE_BURST: f32 = 0.09;
 pub const ICE_FLASH_TIME: f32 = 0.16;
 pub const ICE_SHARDS: usize = 16;

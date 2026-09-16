@@ -14,8 +14,8 @@ use crate::theme::{
     BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, COLOR_CURTAIN_ICON_H,
     COLOR_CURTAIN_ICON_W, CONFETTI_H, CONFETTI_W, CORK_BODY_W, CORK_CAP_H, CORK_H, CORK_W,
     CURTAIN_KNOB, CURTAIN_ROLL_W, DOOR_BORDER, DOOR_GROOVE_W, DOOR_RADIUS, DROPLET_H, DROPLET_W,
-    GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE_H, ICE_CROWN_H,
-    ICE_SHARD_H, ICE_SHARD_W, ITEM_H, KEY_H, KEY_W, LID_H, LID_W, LOCK_H, LOCK_SHACKLE_H,
+    GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE, ICE_BASE_H,
+    ICE_EDGE, ICE_SHARD_H, ICE_SHARD_W, ITEM_H, KEY_H, KEY_W, LID_H, LID_W, LOCK_H, LOCK_SHACKLE_H,
     LOCK_SHACKLE_W, LOCK_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL,
     NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS,
     PLUG_BODY_W, PLUG_H, PLUG_W, QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W,
@@ -61,7 +61,6 @@ pub struct Art {
     pub plug: Handle<Image>,
     pub droplet: Handle<Image>,
     pub ice_base: Handle<Image>,
-    pub ice_crown: Handle<Image>,
     pub ice_shard: Handle<Image>,
     pub curtain_cloth: Handle<Image>,
     pub curtain_roll: Handle<Image>,
@@ -153,7 +152,6 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         plug: plug(&mut images),
         droplet: droplet(&mut images),
         ice_base: ice_base(&mut images),
-        ice_crown: ice_crown(&mut images),
         ice_shard: ice_shard(&mut images),
         curtain_cloth: curtain_cloth(&mut images),
         curtain_roll: curtain_roll(&mut images),
@@ -635,60 +633,94 @@ fn ice_bands(u: f32, v: f32) -> f32 {
     0.80 + 0.20 * (band * PI).sin().powf(0.6)
 }
 
+const ICE_RIM: f32 = 5.0;
+const ICE_SOLID: f32 = 0.94;
+const ICE_CLEAR: f32 = 0.70;
+const ICE_CLEAR_FADE: f32 = 8.0;
+
+/// The crystalline top edge of the ice block, in tile space. It is a periodic
+/// polyline: the first and last vertex are one `COL_PITCH` apart and share the
+/// slope of their neighbour, so a tile seam falls in the middle of a facet and
+/// leaves no notch where two columns of one range meet.
+const ICE_CREST: [Vec2; 9] = [
+    Vec2::new(0.0, 10.67),
+    Vec2::new(10.0, 14.0),
+    Vec2::new(16.0, 3.0),
+    Vec2::new(32.0, 6.0),
+    Vec2::new(38.0, 16.0),
+    Vec2::new(54.0, 12.0),
+    Vec2::new(60.0, 2.0),
+    Vec2::new(64.0, 8.0),
+    Vec2::new(COL_PITCH, 10.67),
+];
+
+fn ice_crest_height(x: f32) -> f32 {
+    let index = ICE_CREST
+        .windows(2)
+        .position(|edge| x < edge[1].x)
+        .unwrap_or(ICE_CREST.len() - 2);
+    let (from, to) = (ICE_CREST[index], ICE_CREST[index + 1]);
+    from.y.lerp(to.y, (x - from.x) / (to.x - from.x))
+}
+
+fn ice_block(point: Vec2) -> f32 {
+    let distance = ICE_CREST
+        .windows(2)
+        .map(|edge| {
+            let along = edge[1] - edge[0];
+            let travel = ((point - edge[0]).dot(along) / along.length_squared()).clamp(0.0, 1.0);
+            point.distance(edge[0] + along * travel)
+        })
+        .fold(f32::MAX, f32::min);
+    if point.y > ice_crest_height(point.x) {
+        -distance
+    } else {
+        distance
+    }
+}
+
+/// One column of the ice block a frozen range sits in. Only the top edge is
+/// drawn; the sides and the floor are the tile boundary, so nothing marks where
+/// two columns of a range meet and the run reads as a single block.
 fn ice_base(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(COL_PITCH, ICE_BASE_H));
     let size = raster.size();
-    let bounds = raster.bounds();
+    // The sprite is tinted `ICE_EDGE`, so a highlight can reach the near white
+    // of the mockup; everything below it is shaded back down to `ICE_BASE`.
+    let (edge, base) = (ICE_EDGE.to_srgba(), ICE_BASE.to_srgba());
+    let body = Vec3::new(
+        base.red / edge.red,
+        base.green / edge.green,
+        base.blue / edge.blue,
+    );
     raster.shape(
-        rect(bounds),
+        scaled(ice_block, SCALE as f32),
         in_pixels(size, |point| {
             let point = point / SCALE as f32;
             let (u, v) = (point.x / COL_PITCH, point.y / ICE_BASE_H);
-            let cap = (1.0 - v * 7.0).clamp(0.0, 1.0);
-            let level = (ice_bands(u, v) * (1.0 - 0.32 * v) + 0.42 * cap).clamp(0.0, 1.0);
-            [level, level, level, 1.0]
-        }),
-    );
-    raster.finish(images)
-}
-
-const ICICLES: [(f32, f32, f32); 4] = [
-    (0.16, 4.5, 18.0),
-    (0.38, 6.0, 29.0),
-    (0.62, 5.0, 22.0),
-    (0.85, 5.5, 33.0),
-];
-
-const ICE_RAIL: f32 = 11.0;
-
-/// The top edge of a frozen run: a solid rail with icicles hanging off it. The
-/// bottles below stay unobscured, which is what keeps their colours readable.
-fn ice_crown(images: &mut Assets<Image>) -> Handle<Image> {
-    let mut raster = raster(Vec2::new(COL_PITCH, ICE_CROWN_H));
-    let size = raster.size();
-    let teeth = std::array::from_fn::<_, { ICICLES.len() }, _>(|index| {
-        let (u, half, len) = ICICLES[index];
-        triangle(
-            Vec2::new(u * COL_PITCH - half, 0.0),
-            Vec2::new(u * COL_PITCH + half, 0.0),
-            Vec2::new(u * COL_PITCH, len),
-        )
-    });
-    raster.shape(
-        scaled(
-            move |point| {
-                teeth.iter().fold(
-                    rect(Rect::new(0.0, 0.0, COL_PITCH, ICE_RAIL))(point),
-                    |near, tooth| near.min(tooth(point)),
-                )
-            },
-            SCALE as f32,
-        ),
-        in_pixels(size, |point| {
-            let point = point / SCALE as f32;
-            let (u, v) = (point.x / COL_PITCH, point.y / ICE_CROWN_H);
-            let level = ice_bands(u, v);
-            [level, level, level, 1.0 - 0.35 * v]
+            let rim = (1.0 + ice_block(point) / ICE_RIM).clamp(0.0, 1.0);
+            let floor = ((point.y - (ICE_BASE_H - ICE_RIM)) / ICE_RIM).clamp(0.0, 1.0);
+            let facets = [(2.0, 1.3, 0.05), (3.0, -0.9, 0.04)]
+                .iter()
+                .map(|(rate, slant, width)| {
+                    let line = ((u * rate + v * slant).fract() - 0.5).abs();
+                    (1.0 - line / width).clamp(0.0, 1.0).powi(2)
+                })
+                .sum::<f32>();
+            // Thins out over the bottle it covers and stays solid in the gap
+            // beside it, so the run reads as one block with the bottles frozen
+            // inside rather than as a bar painted over them.
+            let over_bottle = ((BOTTLE_W * 0.5 - (point.x - COL_PITCH * 0.5).abs())
+                / ICE_CLEAR_FADE)
+                .clamp(0.0, 1.0);
+            let bright = (0.75 * rim * rim + 0.5 * floor * floor + 0.25 * facets).clamp(0.0, 1.0);
+            let tone = (body * ice_bands(u, v) * (1.0 - 0.12 * v)).lerp(Vec3::ONE, bright);
+            let alpha = (ICE_SOLID - ICE_CLEAR * over_bottle * (1.0 - 0.45 * v)
+                + 0.45 * rim * rim
+                + 0.25 * floor
+                + 0.16 * facets)
+                .clamp(0.0, 1.0);
+            [tone.x, tone.y, tone.z, alpha]
         }),
     );
     raster.finish(images)

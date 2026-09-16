@@ -99,10 +99,10 @@ Pluggable bottles have a small plug on top, either closing the bottle or
 hanging to the side, which changes every turn dependent on the state. A corked
 finalized bottle never renders a plug.
 
-Frozen bottles are shown with a slightly frozen border, connecting multiple
-bottles with the frozen effect spanning the range. Unfreezing a range results
-in the ice exploding, which happens when a bottle in the frozen range is
-solved.
+Frozen bottles stand in a block of ice with a crystalline top edge, covering
+their lower part and spanning the whole range as one block, so the colours
+above it stay readable. Unfreezing a range results in the ice exploding, which
+happens when a bottle in the frozen range is solved.
 
 Curtain ranges hide their underlying bottles, so they cannot be interacted
 with. Lifting part of a curtain, exactly one bottle per curtain group per

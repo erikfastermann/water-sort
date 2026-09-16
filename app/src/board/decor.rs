@@ -168,17 +168,6 @@ fn span_rect(
         .reduce(|span, rect| span.union(rect))
 }
 
-fn bar(tint: Color, size: Vec2, at: Vec2, z: f32) -> impl Bundle {
-    (
-        Sprite {
-            color: tint,
-            custom_size: Some(size),
-            ..default()
-        },
-        Transform::from_translation(at.extend(z)),
-    )
-}
-
 fn spawn_ice(
     commands: &mut Commands,
     board: Entity,
@@ -191,15 +180,20 @@ fn spawn_ice(
     let Some(span) = span_rect(geometry, view, first..=last) else {
         return;
     };
-    let bounds = span.inflate(theme::DECOR_MARGIN);
-    let center = bounds.center();
-    let half = bounds.half_size();
+    let wide = span.inflate(theme::DECOR_MARGIN);
+    let block = Rect::new(
+        wide.min.x,
+        wide.min.y,
+        wide.max.x,
+        wide.min.y + theme::ICE_BASE_H,
+    );
+    let center = block.center();
 
     let group = commands
         .spawn((
             IceGroup {
                 first,
-                bounds,
+                bounds: block,
                 shattered: false,
             },
             Transform::from_translation(center.extend(0.0)),
@@ -213,45 +207,15 @@ fn spawn_ice(
         commands.spawn((
             IcePart {
                 first,
-                tint: theme::ICE_BASE,
+                tint: theme::ICE_EDGE,
             },
             Sprite {
                 image: art.ice_base.clone(),
-                color: theme::ICE_BASE,
+                color: theme::ICE_EDGE,
                 custom_size: Some(Vec2::new(COL_PITCH, theme::ICE_BASE_H)),
                 ..default()
             },
-            Transform::from_xyz(column, span.min.y - center.y, theme::Z_ICE_BASE),
-            ChildOf(group),
-        ));
-        commands.spawn((
-            IcePart {
-                first,
-                tint: theme::ICE_FILL,
-            },
-            Sprite {
-                image: art.ice_crown.clone(),
-                color: theme::ICE_FILL,
-                custom_size: Some(Vec2::new(COL_PITCH, theme::ICE_CROWN_H)),
-                ..default()
-            },
-            Anchor::TOP_CENTER,
-            Transform::from_xyz(column, half.y, theme::Z_ICE_FROST),
-            ChildOf(group),
-        ));
-    }
-
-    let frame = theme::ICE_FRAME_W;
-    let edge = theme::ICE_EDGE.with_alpha(theme::ICE_FRAME_ALPHA);
-    for side in [1.0, -1.0] {
-        commands.spawn((
-            IcePart { first, tint: edge },
-            bar(
-                edge,
-                Vec2::new(frame, bounds.height()),
-                Vec2::new(side * (half.x - frame * 0.5), 0.0),
-                theme::Z_ICE_FRAME,
-            ),
+            Transform::from_xyz(column, 0.0, theme::Z_ICE_BASE),
             ChildOf(group),
         ));
     }
