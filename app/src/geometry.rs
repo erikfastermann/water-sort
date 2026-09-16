@@ -8,9 +8,8 @@ use water_sort_core::layout::Layout;
 
 use crate::safe;
 use crate::theme::{
-    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, COLOR_CURTAIN_MARGIN, CURTAIN_MARGIN,
-    DOOR_MARGIN, GLASS_WALL, ICE_MARGIN, INTRO_ENTRY_MARGIN, INTRO_STAGGER, ITEM_H, NECK_H,
-    SAFE_MARGIN,
+    BASE_H, BOTTLE_W, CANVAS_H, CANVAS_W, COL_GAP, DECOR_MARGIN, GLASS_WALL, INTRO_ENTRY_MARGIN,
+    INTRO_STAGGER, ITEM_H, NECK_H,
 };
 
 const CAP: [u8; Layout::LINES as usize] = Layout::MAX_CAPACITY;
@@ -196,25 +195,28 @@ pub const MOUTH_INSET: f32 = 6.0;
 
 /// Core validates frozen, curtain and lock ranges to be single line, so every
 /// range decoration is exactly this tall.
-pub const ICE_H: f32 = outer_h(1) + 2.0 * ICE_MARGIN;
-pub const CURTAIN_H: f32 = outer_h(1) + 2.0 * CURTAIN_MARGIN;
+pub const ICE_H: f32 = outer_h(1) + 2.0 * DECOR_MARGIN;
+pub const CURTAIN_H: f32 = outer_h(1) + 2.0 * DECOR_MARGIN;
 
-pub const DOOR_H: f32 = outer_h(1) + 2.0 * DOOR_MARGIN;
+pub const DOOR_H: f32 = outer_h(1) + 2.0 * DECOR_MARGIN;
 
 /// A door is split in the middle and each half is nine sliced, so the art has
 /// to be authored at the narrowest half a single-bottle group can produce.
-pub const DOOR_MIN: Vec2 = Vec2::new((BOTTLE_W + 2.0 * DOOR_MARGIN) / 2.0, DOOR_H);
+pub const DOOR_MIN: Vec2 = Vec2::new((BOTTLE_W + 2.0 * DECOR_MARGIN) / 2.0, DOOR_H);
 
 /// One strip of a colour curtain, authored at the height of a single-line
 /// bottle; a taller bottle stretches the folds vertically.
 pub const COLOR_CURTAIN_STRIP: Vec2 = Vec2::new(
-    (BOTTLE_W + 2.0 * COLOR_CURTAIN_MARGIN) / crate::theme::COLOR_CURTAIN_STRIPS as f32,
-    outer_h(1) + 2.0 * COLOR_CURTAIN_MARGIN,
+    (BOTTLE_W + 2.0 * DECOR_MARGIN) / crate::theme::COLOR_CURTAIN_STRIPS as f32,
+    outer_h(1) + 2.0 * DECOR_MARGIN,
 );
 
 /// The smallest door a safe can need, and therefore the size its art is drawn
 /// at; every real door is at least this large in both axes.
-pub const SAFE_MIN: Vec2 = Vec2::new(BOTTLE_W + 2.0 * SAFE_MARGIN, outer_h(1) + 2.0 * SAFE_MARGIN);
+pub const SAFE_MIN: Vec2 = Vec2::new(
+    BOTTLE_W + 2.0 * DECOR_MARGIN,
+    outer_h(1) + 2.0 * DECOR_MARGIN,
+);
 
 /// How far off screen a bottle starts its intro slide.
 pub const INTRO_ENTRY: f32 = BOARD_W + INTRO_ENTRY_MARGIN;
@@ -348,12 +350,12 @@ mod tests {
 
     #[test]
     fn derived_constants() {
-        assert_eq!(COL_PITCH, 70.0);
+        assert_eq!(COL_PITCH, 72.0);
         assert_eq!(LINE_PITCH, 204.0);
         assert_eq!(outer_h(1), 170.0);
         assert_eq!(outer_h(2), 374.0);
         assert_eq!(outer_h(3), 578.0);
-        assert_eq!(BOARD_W, 412.0);
+        assert_eq!(BOARD_W, 422.0);
         assert_eq!(BOARD_H, 578.0);
         for lines in 1..=3 {
             assert_eq!(outer_h(lines), bottle_h(max_capacity(lines)));

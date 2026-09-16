@@ -191,7 +191,7 @@ fn spawn_ice(
     let Some(span) = span_rect(geometry, view, first..=last) else {
         return;
     };
-    let bounds = span.inflate(theme::ICE_MARGIN);
+    let bounds = span.inflate(theme::DECOR_MARGIN);
     let center = bounds.center();
     let half = bounds.half_size();
 
@@ -269,7 +269,7 @@ fn spawn_curtain(
     let Some(span) = span_rect(geometry, view, first..=last) else {
         return;
     };
-    let bounds = span.inflate(theme::CURTAIN_MARGIN);
+    let bounds = span.inflate(theme::DECOR_MARGIN);
     let center = bounds.center();
     let half = bounds.half_size();
     let left = -half.x;
@@ -369,7 +369,7 @@ fn spawn_safe(
     let Some(span) = span_rect(geometry, view, members.iter().copied()) else {
         return;
     };
-    let bounds = span.inflate(theme::SAFE_MARGIN);
+    let bounds = span.inflate(theme::DECOR_MARGIN);
     let first = members[0];
     let offset = bounds.width() * 0.5;
 
@@ -841,7 +841,7 @@ fn spawn_door(
     let Some(span) = span_rect(geometry, view, first..=last) else {
         return;
     };
-    let bounds = span.inflate(theme::DOOR_MARGIN);
+    let bounds = span.inflate(theme::DECOR_MARGIN);
     let center = bounds.center();
     let half = bounds.half_size();
     let leaf = Vec2::new(half.x, bounds.height());
@@ -986,7 +986,7 @@ fn spawn_color_curtain(
 ) {
     let bounds = geometry
         .bottle_rect(bottle.slot())
-        .inflate(theme::COLOR_CURTAIN_MARGIN);
+        .inflate(theme::DECOR_MARGIN);
     let half = bounds.half_size();
     let strips = theme::COLOR_CURTAIN_STRIPS;
     let width = bounds.width() / strips as f32;

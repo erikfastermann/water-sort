@@ -118,9 +118,10 @@ pub const CANVAS_H: f32 = 956.0;
 pub const ITEM_H: f32 = 34.0;
 pub const BOTTLE_W: f32 = 62.0;
 pub const GLASS_WALL: f32 = 5.0;
-pub const COL_GAP: f32 = 8.0;
+pub const COL_GAP: f32 = 10.0;
 pub const NECK_H: f32 = 26.0;
 pub const BASE_H: f32 = 8.0;
+pub const DECOR_MARGIN: f32 = 4.0;
 
 pub const INTRO_SLIDE: f32 = 0.32;
 pub const INTRO_STAGGER: f32 = 0.035;
@@ -335,7 +336,6 @@ pub const CONFETTI_SPIN: f32 = 6.0;
 
 pub const FLUID_NAV_KICK: f32 = 2.5;
 
-pub const ICE_MARGIN: f32 = COL_GAP / 2.0;
 pub const ICE_BASE_H: f32 = 50.0;
 pub const ICE_CROWN_H: f32 = 38.0;
 pub const ICE_FRAME_W: f32 = 4.0;
@@ -350,14 +350,12 @@ pub const ICE_SHARD_GRAVITY: f32 = -520.0;
 pub const ICE_SHARD_SPIN: f32 = 7.0;
 pub const ICE_SHARD_LIFE: f32 = 0.7;
 
-pub const CURTAIN_MARGIN: f32 = COL_GAP / 2.0;
 pub const CURTAIN_ROLL_W: f32 = 27.0;
 pub const CURTAIN_TRIM_H: f32 = 11.0;
 pub const CURTAIN_KNOB: f32 = 18.0;
 pub const CURTAIN_WAVE: f32 = 0.06;
 pub const CURTAIN_WAVE_HZ: f32 = 2.5;
 
-pub const SAFE_MARGIN: f32 = 5.0;
 pub const SAFE_RADIUS: f32 = 20.0;
 pub const SAFE_BORDER: f32 = 8.0;
 pub const SAFE_CROSS_D: f32 = 74.0;
@@ -369,7 +367,6 @@ pub const SAFE_POP: f32 = 0.34;
 pub const SAFE_SWING: f32 = -13.0 * PI / 180.0;
 pub const SAFE_SHUT: f32 = 0.94;
 
-pub const DOOR_MARGIN: f32 = COL_GAP / 2.0;
 pub const DOOR_RADIUS: f32 = 14.0;
 pub const DOOR_BORDER: f32 = 7.0;
 pub const DOOR_GROOVE_W: f32 = 30.0;
@@ -409,7 +406,6 @@ pub const TAG_SWAY_HZ: f32 = 0.4;
 pub const TAG_SWING: f32 = 1.4;
 pub const TAG_MAX_SWING: f32 = 0.5;
 
-pub const COLOR_CURTAIN_MARGIN: f32 = COL_GAP / 2.0;
 pub const COLOR_CURTAIN_STRIPS: usize = 6;
 pub const COLOR_CURTAIN_RIPPLE: f32 = 0.09;
 pub const COLOR_CURTAIN_DRIFT: f32 = 20.0;
@@ -423,6 +419,6 @@ pub const Z_COLOR_CURTAIN_ICON: f32 = 5.7;
 pub const Z_DOOR: f32 = 7.0;
 pub const Z_DOOR_LOCK: f32 = 7.4;
 pub const Z_KEY: f32 = 7.6;
-pub const Z_TAG_CORD: f32 = 2.5;
-pub const Z_TAG: f32 = 2.7;
+pub const Z_TAG_CORD: f32 = 8.0;
+pub const Z_TAG: f32 = 8.2;
 pub const Z_ITEM_KEY: f32 = 0.5;

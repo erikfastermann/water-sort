@@ -477,15 +477,21 @@ pub fn sync_key_badges(
 /// borrows the fluid spring for its swing.
 pub fn sync_tags(
     time: Res<Time>,
+    view: Res<BoardView>,
     fluids: Res<Fluids>,
-    mut tags: Query<(&FilterTag, &mut Transform)>,
+    mut tags: Query<(&FilterTag, &mut Transform, &mut Visibility)>,
 ) {
     let elapsed = time.elapsed_secs();
-    for (tag, mut transform) in &mut tags {
+    for (tag, mut transform, mut visibility) in &mut tags {
         let fluid = fluids.get(tag.bottle);
         let sway = (elapsed * theme::TAG_SWAY_HZ * TAU + f32::from(tag.bottle)).sin();
         let swing =
             (fluid.tilt * theme::TAG_SWING).clamp(-theme::TAG_MAX_SWING, theme::TAG_MAX_SWING);
         transform.rotation = Quat::from_rotation_z(theme::TAG_SWAY * sway + swing - fluid.glass);
+        *visibility = if view.get(tag.bottle).interactable {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        };
     }
 }
