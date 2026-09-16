@@ -250,8 +250,8 @@ pub struct PourMotion {
 pub fn pour_motion(state: &PourState, geometry: &BoardGeometry, view: &BoardView) -> PourMotion {
     let from = view.get(state.plan.from);
     let to = view.get(state.plan.to);
-    let from_rect = geometry.bottle_rect(from.lines, from.repr_column);
-    let to_rect = geometry.bottle_rect(to.lines, to.repr_column);
+    let from_rect = geometry.bottle_rect(from.slot());
+    let to_rect = geometry.bottle_rect(to.slot());
 
     let sign = if to_rect.center().x <= from_rect.center().x {
         1.0
@@ -348,8 +348,8 @@ fn drive_stream(
     let motion = pour_motion(&state, geometry, view);
     let from = view.get(state.plan.from);
     let to = view.get(state.plan.to);
-    let head = geometry.mouth(geometry.bottle_rect(from.lines, from.repr_column)) + motion.offset;
-    let foot = geometry.mouth(geometry.bottle_rect(to.lines, to.repr_column));
+    let head = geometry.mouth(geometry.bottle_rect(from.slot())) + motion.offset;
+    let foot = geometry.mouth(geometry.bottle_rect(to.slot()));
     let control = head.midpoint(foot) + Vec2::Y * theme::STREAM_ARC;
     let color = theme::item_color(state.plan.color);
 
@@ -447,10 +447,7 @@ fn drive_swirl(
         return;
     }
 
-    let bounds = {
-        let view = view.get(bottle);
-        geometry.bottle_rect(view.lines, view.repr_column)
-    };
+    let bounds = geometry.bottle_rect(view.get(bottle).slot());
     let interior = geometry.interior_rect(bounds);
     let mouth = geometry.mouth(bounds);
     let rise = (theme::FINALIZE_SWIRL - theme::SWIRL_STARS as f32 * theme::SWIRL_STAGGER).max(0.1);

@@ -6,7 +6,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 
 use crate::anim::{Flow, Play};
-use crate::art::Art;
+use crate::art::{Art, GlassArt};
 use crate::geometry::{Bands, BoardGeometry};
 use crate::hud::{NavAction, NavRequest};
 use crate::input::Selection;
@@ -80,6 +80,15 @@ impl Plugin for BoardPlugin {
     }
 }
 
+/// Everything spawning a bottle draws from. The glass is rasterized on demand,
+/// so a rebuild needs write access to the image assets as well.
+#[derive(SystemParam)]
+pub struct Painter<'w> {
+    art: Res<'w, Art>,
+    images: ResMut<'w, Assets<Image>>,
+    glass: ResMut<'w, GlassArt>,
+}
+
 #[derive(Component)]
 pub struct BoardRoot;
 
@@ -88,14 +97,19 @@ struct ShakeRng(Pcg32);
 
 fn spawn_board(
     mut commands: Commands,
-    art: Res<Art>,
+    mut painter: Painter,
     view: Res<BoardView>,
     geometry: Res<BoardGeometry>,
 ) {
-    build(&mut commands, &art, &view, &geometry);
+    build(&mut commands, &mut painter, &view, &geometry);
 }
 
-fn build(commands: &mut Commands, art: &Art, view: &BoardView, geometry: &BoardGeometry) {
+fn build(
+    commands: &mut Commands,
+    painter: &mut Painter,
+    view: &BoardView,
+    geometry: &BoardGeometry,
+) {
     let root = commands
         .spawn((
             BoardRoot,
@@ -106,9 +120,9 @@ fn build(commands: &mut Commands, art: &Art, view: &BoardView, geometry: &BoardG
 
     let colors = decor::lock_colors(view);
     for bottle in &view.bottles {
-        bottle::spawn(commands, root, art, geometry, &colors, bottle);
+        bottle::spawn(commands, root, painter, geometry, &colors, bottle);
     }
-    decor::spawn(commands, root, art, geometry, view, &colors);
+    decor::spawn(commands, root, &painter.art, geometry, view, &colors);
 }
 
 /// Everything a level change or a history step touches.
@@ -124,7 +138,7 @@ struct Board<'w, 's> {
 
 fn apply_nav(
     mut commands: Commands,
-    art: Res<Art>,
+    mut painter: Painter,
     bands: Res<Bands>,
     mut request: ResMut<NavRequest>,
     mut session: ResMut<Session>,
@@ -167,7 +181,7 @@ fn apply_nav(
             *board.fluids = Fluids::default();
             board.selection.clear();
             board.flow.restart_intro();
-            build(&mut commands, &art, &board.view, &board.geometry);
+            build(&mut commands, &mut painter, &board.view, &board.geometry);
         }
     }
 }
@@ -177,7 +191,7 @@ fn apply_nav(
 /// [`BoardView`], so a rebuild loses nothing.
 fn apply_bands(
     mut commands: Commands,
-    art: Res<Art>,
+    mut painter: Painter,
     bands: Res<Bands>,
     view: Res<BoardView>,
     mut geometry: ResMut<BoardGeometry>,
@@ -193,5 +207,5 @@ fn apply_bands(
         commands.entity(root).despawn();
     }
     *geometry = BoardGeometry::new(*bands, view.slots());
-    build(&mut commands, &art, &view, &geometry);
+    build(&mut commands, &mut painter, &view, &geometry);
 }

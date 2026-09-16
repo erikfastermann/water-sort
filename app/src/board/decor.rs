@@ -34,6 +34,7 @@ pub struct Curtain {
     first: u8,
     last: u8,
     left: f32,
+    height: f32,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -155,8 +156,7 @@ pub fn spawn(
 }
 
 fn bottle_rect(geometry: &BoardGeometry, view: &BoardView, id: u8) -> Rect {
-    let bottle = view.get(id);
-    geometry.bottle_rect(bottle.lines, bottle.repr_column)
+    geometry.bottle_rect(view.get(id).slot())
 }
 
 fn span_rect(
@@ -273,10 +273,16 @@ fn spawn_curtain(
     let center = bounds.center();
     let half = bounds.half_size();
     let left = -half.x;
+    let height = bounds.height();
 
     let curtain = commands
         .spawn((
-            Curtain { first, last, left },
+            Curtain {
+                first,
+                last,
+                left,
+                height,
+            },
             Transform::from_translation(center.extend(0.0)),
             Visibility::default(),
             ChildOf(board),
@@ -292,7 +298,7 @@ fn spawn_curtain(
             Sprite {
                 image: art.curtain_cloth.clone(),
                 color: theme::CURTAIN_CLOTH,
-                custom_size: Some(Vec2::new(COL_PITCH, CURTAIN_H)),
+                custom_size: Some(Vec2::new(COL_PITCH, height)),
                 ..default()
             },
             Anchor::CENTER_LEFT,
@@ -331,7 +337,7 @@ fn spawn_curtain(
             Sprite {
                 image: art.curtain_roll.clone(),
                 color: theme::CURTAIN_ROLL,
-                custom_size: Some(Vec2::new(theme::CURTAIN_ROLL_W, CURTAIN_H)),
+                custom_size: Some(Vec2::new(theme::CURTAIN_ROLL_W, height)),
                 ..default()
             },
             Transform::from_xyz(left, 0.0, theme::Z_CURTAIN_ROLL),
@@ -609,19 +615,21 @@ pub fn sync_curtains(
     mut parts: Query<(&CurtainPart, &mut Sprite, &mut Transform, &mut Visibility)>,
 ) {
     let elapsed = time.elapsed_secs();
-    let states: Vec<(u8, f32, f32)> = curtains
+    let states: Vec<(u8, f32, f32, f32)> = curtains
         .iter()
         .map(|curtain| {
             (
                 curtain.first,
                 covered(&view, &flow, curtain.first, curtain.last),
                 curtain.left,
+                curtain.height,
             )
         })
         .collect();
 
     for (part, mut sprite, mut transform, mut visibility) in &mut parts {
-        let Some((_, width, left)) = states.iter().copied().find(|(id, ..)| *id == part.first)
+        let Some((_, width, left, height)) =
+            states.iter().copied().find(|(id, ..)| *id == part.first)
         else {
             continue;
         };
@@ -630,7 +638,7 @@ pub fn sync_curtains(
             CurtainRole::Sheet(column) => {
                 let fraction = (width - f32::from(column)).clamp(0.0, 1.0);
                 *visibility = shown(fraction > 0.0);
-                sprite.custom_size = Some(Vec2::new(fraction * COL_PITCH, CURTAIN_H));
+                sprite.custom_size = Some(Vec2::new(fraction * COL_PITCH, height));
                 sprite.rect = Some(crop(Vec2::new(COL_PITCH, CURTAIN_H), fraction));
 
                 let wave = (elapsed * theme::CURTAIN_WAVE_HZ * TAU + f32::from(column)).sin();
@@ -977,7 +985,7 @@ fn spawn_color_curtain(
     color: u8,
 ) {
     let bounds = geometry
-        .bottle_rect(bottle.lines, bottle.repr_column)
+        .bottle_rect(bottle.slot())
         .inflate(theme::COLOR_CURTAIN_MARGIN);
     let half = bounds.half_size();
     let strips = theme::COLOR_CURTAIN_STRIPS;
@@ -1174,7 +1182,7 @@ pub fn sync_keys(
         };
 
         let bottle = stage.view.get(key.from.0);
-        let rect = stage.geometry.bottle_rect(bottle.lines, bottle.repr_column);
+        let rect = stage.geometry.bottle_rect(bottle.slot());
         let from = stage.geometry.item_rect(rect, key.from.1).center();
         let eased = ease(progress);
         let control = from.midpoint(key.target) + Vec2::Y * theme::KEY_ARC;

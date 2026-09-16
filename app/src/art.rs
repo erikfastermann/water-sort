@@ -1,11 +1,10 @@
+use std::collections::HashMap;
 use std::f32::consts::{PI, TAU};
 
 use bevy::prelude::*;
 use bevy::sprite::{BorderRect, SliceScaleMode, SpriteImageMode, TextureSlicer};
 
-use crate::geometry::{
-    COL_PITCH, COLOR_CURTAIN_STRIP, CURTAIN_H, DOOR_MIN, LINES, SAFE_MIN, outer_h,
-};
+use crate::geometry::{COL_PITCH, COLOR_CURTAIN_STRIP, CURTAIN_H, DOOR_MIN, SAFE_MIN, bottle_h};
 use crate::raster::{
     Raster, ellipse, half_plane, in_pixels, intersect, outline, radial, radial_inverse, rect, ring,
     rotated, rounded_rect, scaled, smooth_union, solid, sparkle, triangle, union,
@@ -52,8 +51,6 @@ pub struct Art {
     pub item_body: Handle<Image>,
     pub item_base: Handle<Image>,
     pub item_surface: Handle<Image>,
-    pub glass_back: [Handle<Image>; LINES],
-    pub glass_front: [Handle<Image>; LINES],
     pub cork: Handle<Image>,
     pub cork_cap: Handle<Image>,
     pub question: Handle<Image>,
@@ -109,12 +106,32 @@ pub struct ArtPlugin;
 
 impl Plugin for ArtPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, build_art);
+        app.init_resource::<GlassArt>()
+            .add_systems(PreStartup, build_art);
     }
 }
 
-pub fn glass_size(lines: u8) -> Vec2 {
-    Vec2::new(BOTTLE_W, outer_h(lines)) + Vec2::splat(2.0 * GLASS_PAD)
+/// A bottle is drawn at its own capacity, so the glass comes in as many sizes
+/// as there are capacities. Rasterizing all of them up front costs more than
+/// the whole rest of the art, so each one is built the first time it is used.
+#[derive(Resource, Default)]
+pub struct GlassArt(HashMap<u8, (Handle<Image>, Handle<Image>)>);
+
+impl GlassArt {
+    pub fn get(
+        &mut self,
+        images: &mut Assets<Image>,
+        capacity: u8,
+    ) -> (Handle<Image>, Handle<Image>) {
+        self.0
+            .entry(capacity)
+            .or_insert_with(|| (glass_back(images, capacity), glass_front(images, capacity)))
+            .clone()
+    }
+}
+
+pub fn glass_size(capacity: u8) -> Vec2 {
+    Vec2::new(BOTTLE_W, bottle_h(capacity)) + Vec2::splat(2.0 * GLASS_PAD)
 }
 
 fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
@@ -126,8 +143,6 @@ fn build_art(mut commands: Commands, mut images: ResMut<Assets<Image>>) {
         item_body: item_body(&mut images),
         item_base: item_base(&mut images),
         item_surface: item_surface(&mut images),
-        glass_back: std::array::from_fn(|line| glass_back(&mut images, line as u8 + 1)),
-        glass_front: std::array::from_fn(|line| glass_front(&mut images, line as u8 + 1)),
         cork: cork(&mut images),
         cork_cap: cork_cap(&mut images),
         question: question(&mut images),
@@ -290,8 +305,8 @@ fn item_surface(images: &mut Assets<Image>) -> Handle<Image> {
     raster.finish(images)
 }
 
-fn bottle_sdf(lines: u8) -> impl Fn(Vec2) -> f32 {
-    let height = outer_h(lines);
+fn bottle_sdf(capacity: u8) -> impl Fn(Vec2) -> f32 {
+    let height = bottle_h(capacity);
     let center = GLASS_PAD + BOTTLE_W * 0.5;
     let body = rounded_rect(
         Rect::new(
@@ -323,14 +338,14 @@ fn bottle_sdf(lines: u8) -> impl Fn(Vec2) -> f32 {
     smooth_union(smooth_union(body, neck, SHOULDER_BLEND), rim, 2.0)
 }
 
-fn glass_back(images: &mut Assets<Image>, lines: u8) -> Handle<Image> {
-    let size = glass_size(lines);
+fn glass_back(images: &mut Assets<Image>, capacity: u8) -> Handle<Image> {
+    let size = glass_size(capacity);
     let mut raster = raster(size);
     let pixels = raster.size();
     raster.shape(
-        scaled(bottle_sdf(lines), SCALE as f32),
+        scaled(bottle_sdf(capacity), SCALE as f32),
         in_pixels(pixels, {
-            let sdf = scaled(bottle_sdf(lines), SCALE as f32);
+            let sdf = scaled(bottle_sdf(capacity), SCALE as f32);
             move |point| {
                 let inside = (-sdf(point) / (GLASS_WALL * 2.0 * SCALE as f32)).clamp(0.0, 1.0);
                 [1.0, 1.0, 1.0, 1.0f32.lerp(0.5, inside)]
@@ -340,14 +355,14 @@ fn glass_back(images: &mut Assets<Image>, lines: u8) -> Handle<Image> {
     raster.finish(images)
 }
 
-fn glass_front(images: &mut Assets<Image>, lines: u8) -> Handle<Image> {
-    let height = outer_h(lines);
-    let size = glass_size(lines);
+fn glass_front(images: &mut Assets<Image>, capacity: u8) -> Handle<Image> {
+    let height = bottle_h(capacity);
+    let size = glass_size(capacity);
     let center = GLASS_PAD + BOTTLE_W * 0.5;
     let mut raster = raster(size);
 
     raster.shape(
-        scaled(outline(bottle_sdf(lines), GLASS_STROKE), SCALE as f32),
+        scaled(outline(bottle_sdf(capacity), GLASS_STROKE), SCALE as f32),
         solid([1.0, 1.0, 1.0, 1.0]),
     );
     raster.shape(

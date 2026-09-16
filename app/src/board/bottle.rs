@@ -3,12 +3,13 @@ use bevy::prelude::*;
 use bevy::sprite::Anchor;
 
 use crate::anim::{Flow, PourState, pour_motion};
-use crate::art::{Art, ITEM_SURFACE_H, ITEM_W, glass_size};
-use crate::geometry::{BoardGeometry, INTRO_ENTRY, check_capacity, outer_h};
+use crate::art::{ITEM_SURFACE_H, ITEM_W, glass_size};
+use crate::geometry::{BoardGeometry, INTRO_ENTRY, check_capacity};
 use crate::input::Selection;
 use crate::theme;
 use crate::view::{BoardView, BottleView, MAX_BOTTLES};
 
+use super::Painter;
 use super::decor::LockColors;
 use super::feature;
 
@@ -141,15 +142,15 @@ impl Fluids {
 pub fn spawn(
     commands: &mut Commands,
     board: Entity,
-    art: &Art,
+    painter: &mut Painter,
     geometry: &BoardGeometry,
     colors: &LockColors,
     view: &BottleView,
 ) {
-    let lines = view.line_span();
-    check_capacity(view.capacity, lines);
+    let art = &painter.art;
+    check_capacity(view.capacity, view.line_span());
 
-    let bounds = geometry.bottle_rect(view.lines, view.repr_column);
+    let bounds = geometry.bottle_rect(view.slot());
     let center = bounds.center();
     let pivot = geometry.mouth(bounds) - center;
     let entry = if view.lines.start.is_multiple_of(2) {
@@ -202,7 +203,7 @@ pub fn spawn(
             color: theme::SELECT_GLOW.with_alpha(0.0),
             custom_size: Some(Vec2::new(
                 theme::HALO_WIDTH,
-                outer_h(lines) + theme::HALO_MARGIN,
+                bounds.height() + theme::HALO_MARGIN,
             )),
             ..default()
         },
@@ -227,10 +228,11 @@ pub fn spawn(
         ))
         .id();
 
-    let glass = Some(glass_size(lines));
+    let (glass_back, glass_front) = painter.glass.get(&mut painter.images, view.capacity);
+    let glass = Some(glass_size(view.capacity));
     commands.spawn((
         Sprite {
-            image: art.glass_back[usize::from(lines) - 1].clone(),
+            image: glass_back,
             color: theme::GLASS_INTERIOR,
             custom_size: glass,
             ..default()
@@ -281,7 +283,7 @@ pub fn spawn(
 
     commands.spawn((
         Sprite {
-            image: art.glass_front[usize::from(lines) - 1].clone(),
+            image: glass_front,
             color: theme::GLASS_RIM,
             custom_size: glass,
             ..default()

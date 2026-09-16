@@ -185,7 +185,11 @@ pub const fn max_capacity(lines: u8) -> u8 {
 }
 
 pub const fn outer_h(lines: u8) -> f32 {
-    max_capacity(lines) as f32 * ITEM_H + NECK_H + BASE_H
+    bottle_h(max_capacity(lines))
+}
+
+pub const fn bottle_h(capacity: u8) -> f32 {
+    capacity as f32 * ITEM_H + NECK_H + BASE_H
 }
 
 pub const MOUTH_INSET: f32 = 6.0;
@@ -219,16 +223,32 @@ pub const INTRO_ENTRY: f32 = BOARD_W + INTRO_ENTRY_MARGIN;
 /// slowest bottle has landed.
 pub const MAX_INTRO_DELAY: f32 = (Layout::REPR_LINE_LEN - 1) as f32 * INTRO_STAGGER;
 
+/// Where a bottle sits on the board and how tall it is. A bottle may declare
+/// less than the maximum capacity of its line span, in which case it is drawn
+/// shorter and bottom aligned in that span.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Slot {
+    pub lines: Range<u8>,
+    pub repr_column: u8,
+    pub capacity: u8,
+}
+
+impl Slot {
+    pub fn span(self) -> u8 {
+        self.lines.end - self.lines.start
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Resource)]
 pub struct BoardGeometry {
     origin: Vec2,
 }
 
 impl BoardGeometry {
-    pub fn new(bands: Bands, slots: impl Iterator<Item = (Range<u8>, u8)>) -> Self {
+    pub fn new(bands: Bands, slots: impl Iterator<Item = Slot>) -> Self {
         let mut used: Option<Rect> = None;
-        for (lines, repr_column) in slots {
-            let rect = Self { origin: Vec2::ZERO }.bottle_rect(lines, repr_column);
+        for slot in slots {
+            let rect = Self { origin: Vec2::ZERO }.bottle_rect(slot);
             used = Some(match used {
                 Some(bounds) => bounds.union(rect),
                 None => rect,
@@ -245,11 +265,16 @@ impl BoardGeometry {
     /// an odd number of columns fewer than the full grid sits on half-pitch
     /// repr columns. The repr column is therefore a half-column index, not a
     /// grid column times two.
-    pub fn bottle_rect(&self, lines: Range<u8>, repr_column: u8) -> Rect {
-        let span = lines.end - lines.start;
-        let left = self.origin.x + f32::from(repr_column) * COL_PITCH * 0.5;
-        let top = self.origin.y - f32::from(lines.start) * LINE_PITCH;
-        Rect::new(left, top - outer_h(span), left + BOTTLE_W, top)
+    pub fn bottle_rect(&self, slot: Slot) -> Rect {
+        let left = self.origin.x + f32::from(slot.repr_column) * COL_PITCH * 0.5;
+        let bottom =
+            self.origin.y - f32::from(slot.lines.start) * LINE_PITCH - outer_h(slot.span());
+        Rect::new(
+            left,
+            bottom,
+            left + BOTTLE_W,
+            bottom + bottle_h(slot.capacity),
+        )
     }
 
     pub fn interior_rect(&self, bottle: Rect) -> Rect {
@@ -281,12 +306,21 @@ mod tests {
     use std::range::Range;
 
     use super::{
-        BOARD_H, BOARD_W, Bands, BoardGeometry, COL_PITCH, LINE_PITCH, PLAY_CENTER, outer_h,
+        BOARD_H, BOARD_W, Bands, BoardGeometry, COL_PITCH, LINE_PITCH, PLAY_CENTER, Slot, bottle_h,
+        max_capacity, outer_h,
     };
     use crate::theme::{BOTTLE_W, ITEM_H};
 
-    fn slot(start: u8, end: u8, repr_column: u8) -> (Range<u8>, u8) {
-        (Range { start, end }, repr_column)
+    fn slot(start: u8, end: u8, repr_column: u8) -> Slot {
+        sized(start, end, repr_column, max_capacity(end - start))
+    }
+
+    fn sized(start: u8, end: u8, repr_column: u8, capacity: u8) -> Slot {
+        Slot {
+            lines: Range { start, end },
+            repr_column,
+            capacity,
+        }
     }
 
     #[test]
@@ -321,6 +355,9 @@ mod tests {
         assert_eq!(outer_h(3), 578.0);
         assert_eq!(BOARD_W, 412.0);
         assert_eq!(BOARD_H, 578.0);
+        for lines in 1..=3 {
+            assert_eq!(outer_h(lines), bottle_h(max_capacity(lines)));
+        }
     }
 
     #[test]
@@ -330,8 +367,8 @@ mod tests {
             .collect();
         let geometry = BoardGeometry::new(Bands::default(), slots.iter().copied());
 
-        let first = geometry.bottle_rect(slots[0].0, slots[0].1);
-        let last = geometry.bottle_rect(slots[17].0, slots[17].1);
+        let first = geometry.bottle_rect(slots[0]);
+        let last = geometry.bottle_rect(slots[17]);
         let bounds = first.union(last);
 
         assert_eq!(bounds.width(), BOARD_W);
@@ -343,8 +380,8 @@ mod tests {
         let slots = [slot(1, 2, 4), slot(1, 2, 6)];
         let geometry = BoardGeometry::new(Bands::default(), slots.iter().copied());
         let bounds = geometry
-            .bottle_rect(slots[0].0, slots[0].1)
-            .union(geometry.bottle_rect(slots[1].0, slots[1].1));
+            .bottle_rect(slots[0])
+            .union(geometry.bottle_rect(slots[1]));
 
         assert_eq!(bounds.center(), PLAY_CENTER);
         assert_eq!(bounds.width(), COL_PITCH + BOTTLE_W);
@@ -360,20 +397,17 @@ mod tests {
             slot(1, 2, 7),
         ];
         let geometry = BoardGeometry::new(Bands::default(), slots.iter().copied());
-        let wide = geometry.bottle_rect(slots[0].0, slots[0].1);
-        let narrow = geometry.bottle_rect(slots[2].0, slots[2].1);
+        let wide = geometry.bottle_rect(slots[0]);
+        let narrow = geometry.bottle_rect(slots[2]);
 
         assert_eq!(wide.min.x - narrow.min.x, COL_PITCH / 2.0);
-        assert_eq!(
-            geometry.bottle_rect(slots[3].0, slots[3].1).center().x,
-            PLAY_CENTER.x
-        );
+        assert_eq!(geometry.bottle_rect(slots[3]).center().x, PLAY_CENTER.x);
     }
 
     #[test]
     fn items_stack_from_the_interior_bottom() {
         let geometry = BoardGeometry::new(Bands::default(), core::iter::empty());
-        let bottle = geometry.bottle_rect(Range { start: 0, end: 1 }, 0);
+        let bottle = geometry.bottle_rect(slot(0, 1, 0));
         let interior = geometry.interior_rect(bottle);
 
         let first = geometry.item_rect(bottle, 0);
@@ -388,8 +422,8 @@ mod tests {
     #[test]
     fn multi_line_bottles_share_the_item_grid() {
         let geometry = BoardGeometry::new(Bands::default(), core::iter::empty());
-        let short = geometry.bottle_rect(Range { start: 1, end: 2 }, 0);
-        let tall = geometry.bottle_rect(Range { start: 0, end: 2 }, 2);
+        let short = geometry.bottle_rect(slot(1, 2, 0));
+        let tall = geometry.bottle_rect(slot(0, 2, 2));
 
         for index in 0..4 {
             assert_eq!(
@@ -399,5 +433,20 @@ mod tests {
         }
         assert_eq!(geometry.item_rect(short, 3).max.y, short.max.y - 26.0);
         assert_eq!(geometry.item_rect(tall, 9).max.y, tall.max.y - 26.0);
+    }
+
+    #[test]
+    fn a_short_bottle_keeps_its_floor_and_lowers_its_lid() {
+        let geometry = BoardGeometry::new(Bands::default(), core::iter::empty());
+        let full = geometry.bottle_rect(slot(0, 2, 0));
+        let short = geometry.bottle_rect(sized(0, 2, 0, 8));
+
+        assert_eq!(short.min.y, full.min.y);
+        assert_eq!(short.height(), bottle_h(8));
+        assert_eq!(short.height(), 306.0);
+        assert_eq!(
+            geometry.interior_rect(short).max.y,
+            geometry.item_rect(short, 7).max.y
+        );
     }
 }

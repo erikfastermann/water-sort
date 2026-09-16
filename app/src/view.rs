@@ -6,6 +6,8 @@ use bevy::prelude::*;
 use water_sort_core::layout::Layout;
 use water_sort_core::state::{BOTTLE_COUNT, Move as CoreMove, Pours, State, to_index};
 
+use crate::geometry::Slot;
+
 /// Upper bound for arrays indexed by bottle id; core reserves index 0.
 pub const MAX_BOTTLES: usize = BOTTLE_COUNT;
 
@@ -44,8 +46,12 @@ impl BottleView {
         self.lines.end - self.lines.start
     }
 
-    pub fn slot(&self) -> (Range<u8>, u8) {
-        (self.lines, self.repr_column)
+    pub fn slot(&self) -> Slot {
+        Slot {
+            lines: self.lines,
+            repr_column: self.repr_column,
+            capacity: self.capacity,
+        }
     }
 }
 
@@ -91,7 +97,7 @@ impl BoardView {
             .expect("bottle is part of the board")
     }
 
-    pub fn slots(&self) -> impl Iterator<Item = (Range<u8>, u8)> {
+    pub fn slots(&self) -> impl Iterator<Item = Slot> {
         self.bottles.iter().map(BottleView::slot)
     }
 }
