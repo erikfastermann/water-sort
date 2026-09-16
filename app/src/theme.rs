@@ -215,7 +215,7 @@ pub const FLUID_STIFFNESS: f32 = 90.0;
 pub const FLUID_DAMPING: f32 = 9.0;
 pub const FLUID_MAX_TILT: f32 = 0.22;
 /// A liquid surface counter-rotates against the glass to stay level, but a
-/// fully tipped bottle would push the cap ellipse outside the silhouette.
+/// fully tipped bottle would push the surface slab outside the silhouette.
 pub const SURFACE_MAX_TILT: f32 = 0.32;
 pub const FLUID_DRIVE: f32 = 0.0016;
 pub const FLUID_DRIVE_MAX: f32 = 6.0;

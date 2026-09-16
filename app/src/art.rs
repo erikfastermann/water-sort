@@ -28,7 +28,7 @@ const GRADIENT_NOISE: f32 = 0.02;
 
 pub const GLASS_PAD: f32 = 5.0;
 pub const ITEM_W: f32 = BOTTLE_W - 2.0 * GLASS_WALL;
-pub const ITEM_SURFACE_H: f32 = 7.0;
+pub const ITEM_SURFACE_H: f32 = 10.0;
 
 const BODY_TOP: f32 = 14.0;
 const BODY_RADIUS: f32 = 12.0;
@@ -266,10 +266,17 @@ fn item_shade(uv: Vec2) -> [f32; 4] {
     [level, level, level, 1.0]
 }
 
+/// No vertical component, so stacked items of the same colour merge into one
+/// body of liquid instead of showing a seam at every item boundary.
+fn liquid_shade(uv: Vec2) -> [f32; 4] {
+    let level = fluid_shade(uv);
+    [level, level, level, 1.0]
+}
+
 fn item_body(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(ITEM_W, ITEM_H));
     let bounds = raster.bounds();
-    raster.shape(rect(bounds), item_shade);
+    raster.shape(rect(bounds), liquid_shade);
     raster.finish(images)
 }
 
@@ -282,26 +289,18 @@ fn item_base(images: &mut Assets<Image>) -> Handle<Image> {
             union(rect(straight), rounded_rect(bounds, ITEM_RADIUS)),
             SCALE as f32,
         ),
-        item_shade,
+        liquid_shade,
     );
     raster.finish(images)
 }
 
-/// Only the half of the surface ellipse that rises above the item, so its lower
-/// edge is a straight seam that continues the slab shading exactly.
+/// A flat slab in the item's own colour. It overlaps the item downward, so
+/// rotating it about its bottom centre keeps the pivot buried and only tips the
+/// liquid level.
 fn item_surface(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(ITEM_W, ITEM_SURFACE_H));
-    let size = raster.size();
-    raster.shape(
-        ellipse(
-            Vec2::new(size.x * 0.5, size.y),
-            Vec2::new(size.x * 0.5, size.y),
-        ),
-        |uv| {
-            let level = (fluid_shade(uv) + 0.10 * (1.0 - (uv.y * 0.5 + 0.5))).clamp(0.0, 1.0);
-            [level, level, level, 1.0]
-        },
-    );
+    let bounds = raster.bounds();
+    raster.shape(rect(bounds), liquid_shade);
     raster.finish(images)
 }
 

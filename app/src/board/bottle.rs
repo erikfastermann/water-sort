@@ -477,8 +477,8 @@ pub fn sync_items(
     }
 }
 
-/// The rounded liquid surface only belongs on the topmost item; it stays a
-/// child of that item so it is hidden and moved along with it.
+/// The liquid surface only belongs on the topmost item; it stays a child of
+/// that item so it is hidden and moved along with it.
 pub fn sync_surfaces(
     view: Res<BoardView>,
     flow: Res<Flow>,
@@ -501,7 +501,10 @@ pub fn sync_surfaces(
                     &theme::ITEM_HIDDEN,
                     feature::hidden_level(bottle, surface.index, effects),
                 );
-                transform.translation.y = fill * theme::ITEM_H;
+                let top = fill * theme::ITEM_H;
+                let overlap = ITEM_SURFACE_H.min(top);
+                sprite.custom_size = Some(Vec2::new(ITEM_W, overlap));
+                transform.translation.y = top - overlap;
                 let fluid = fluids.get(surface.bottle);
                 let level = (fluid.tilt - fluid.glass)
                     .clamp(-theme::SURFACE_MAX_TILT, theme::SURFACE_MAX_TILT);
