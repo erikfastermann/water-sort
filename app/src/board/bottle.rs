@@ -303,7 +303,7 @@ pub fn spawn(
         pivot.y,
     );
 
-    let cork_y = pivot.y + theme::CORK_H * 0.25;
+    let cork_y = pivot.y + theme::CORK_SEAT;
     let cork = commands
         .spawn((
             Cork {
@@ -331,7 +331,7 @@ pub fn spawn(
         Transform::from_xyz(
             0.0,
             (theme::CORK_H - theme::CORK_CAP_H) * 0.5,
-            theme::Z_ITEM_SURFACE,
+            theme::Z_CORK_CAP - theme::Z_CORK,
         ),
         ChildOf(cork),
     ));

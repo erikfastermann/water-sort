@@ -193,6 +193,7 @@ pub const Z_PLUG: f32 = 2.8;
 pub const Z_BOTTLE: f32 = 0.0;
 pub const Z_HALO: f32 = -1.0;
 pub const Z_CORK: f32 = 3.0;
+pub const Z_CORK_CAP: f32 = 3.1;
 pub const Z_STREAM: f32 = 15.0;
 pub const Z_POUR: f32 = 20.0;
 pub const Z_SWIRL: f32 = 25.0;
@@ -250,9 +251,11 @@ pub const SWIRL_STAGGER: f32 = 0.02;
 pub const SWIRL_SIZE: f32 = 26.0;
 pub const SWIRL_TINT: f32 = 0.8;
 
-pub const CORK_W: f32 = 34.0;
+pub const CORK_W: f32 = 26.0;
+pub const CORK_BODY_W: f32 = 18.0;
 pub const CORK_H: f32 = 26.0;
-pub const CORK_CAP_H: f32 = 10.0;
+pub const CORK_CAP_H: f32 = 9.0;
+pub const CORK_SEAT: f32 = -7.0;
 pub const CORK_RISE: f32 = 30.0;
 pub const CORK_SQUASH: f32 = 1.15;
 
@@ -277,8 +280,9 @@ pub const ROPE_H: f32 = 12.0;
 pub const ROPE_DROP: f32 = 14.0;
 
 pub const PLUG_W: f32 = 24.0;
+pub const PLUG_BODY_W: f32 = 17.0;
 pub const PLUG_H: f32 = 26.0;
-pub const PLUG_SEAT: Vec2 = Vec2::new(0.0, -3.0);
+pub const PLUG_SEAT: Vec2 = Vec2::new(0.0, -8.0);
 pub const PLUG_HANG: Vec2 = Vec2::new(-23.0, -25.0);
 pub const PLUG_HANG_ANGLE: f32 = -0.7;
 pub const PLUG_ARC: f32 = 12.0;

@@ -12,14 +12,14 @@ use crate::raster::{
 use crate::rng::Pcg32;
 use crate::theme::{
     BAND_RADIUS, BAND_RIM_H, BAND_STROKE, BASE_H, BOTTLE_W, COLOR_CURTAIN_ICON_H,
-    COLOR_CURTAIN_ICON_W, CONFETTI_H, CONFETTI_W, CORK_CAP_H, CORK_H, CORK_W, CURTAIN_KNOB,
-    CURTAIN_ROLL_W, DOOR_BORDER, DOOR_GROOVE_W, DOOR_RADIUS, DROPLET_H, DROPLET_W, GLASS_WALL,
-    HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE_H, ICE_CROWN_H, ICE_SHARD_H,
-    ICE_SHARD_W, ITEM_H, KEY_H, KEY_W, LID_H, LID_W, LOCK_H, LOCK_SHACKLE_H, LOCK_SHACKLE_W,
-    LOCK_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL, NAV_PANEL_BORDER,
-    NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS, PLUG_H, PLUG_W,
-    QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W, SAFE_BORDER, SAFE_CROSS_D, SAFE_DIAL_D,
-    SAFE_HUB_D, SAFE_RADIUS, TAG_H, TAG_W,
+    COLOR_CURTAIN_ICON_W, CONFETTI_H, CONFETTI_W, CORK_BODY_W, CORK_CAP_H, CORK_H, CORK_W,
+    CURTAIN_KNOB, CURTAIN_ROLL_W, DOOR_BORDER, DOOR_GROOVE_W, DOOR_RADIUS, DROPLET_H, DROPLET_W,
+    GLASS_WALL, HEADER_PILL, HEADER_PILL_BORDER, HEADER_PILL_RADIUS, ICE_BASE_H, ICE_CROWN_H,
+    ICE_SHARD_H, ICE_SHARD_W, ITEM_H, KEY_H, KEY_W, LID_H, LID_W, LOCK_H, LOCK_SHACKLE_H,
+    LOCK_SHACKLE_W, LOCK_W, NAV_BUTTON, NAV_BUTTON_RADIUS, NAV_GLYPH_SIZE, NAV_PANEL,
+    NAV_PANEL_BORDER, NAV_PANEL_RADIUS, NECK_H, NEXT_PILL, NEXT_PILL_BORDER, NEXT_PILL_RADIUS,
+    PLUG_BODY_W, PLUG_H, PLUG_W, QUESTION_H, QUESTION_W, ROCK_H, ROCK_W, ROPE_H, ROPE_W,
+    SAFE_BORDER, SAFE_CROSS_D, SAFE_DIAL_D, SAFE_HUB_D, SAFE_RADIUS, TAG_H, TAG_W,
 };
 
 const SCALE: u32 = 2;
@@ -397,14 +397,19 @@ fn glass_front(images: &mut Assets<Image>, capacity: u8) -> Handle<Image> {
 }
 
 const CORK_RADIUS: f32 = 5.0;
-const CORK_INSET: f32 = 3.0;
+const CORK_CAP_RADIUS: f32 = 4.0;
 
 fn cork(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(CORK_W, CORK_H));
     raster.shape(
         scaled(
             rounded_rect(
-                Rect::new(CORK_INSET, CORK_CAP_H * 0.5, CORK_W - CORK_INSET, CORK_H),
+                Rect::new(
+                    (CORK_W - CORK_BODY_W) * 0.5,
+                    CORK_CAP_H * 0.5,
+                    (CORK_W + CORK_BODY_W) * 0.5,
+                    CORK_H,
+                ),
                 CORK_RADIUS,
             ),
             SCALE as f32,
@@ -418,7 +423,7 @@ fn cork_cap(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(CORK_W, CORK_CAP_H));
     raster.shape(
         scaled(
-            rounded_rect(Rect::new(0.0, 0.0, CORK_W, CORK_CAP_H), CORK_RADIUS),
+            rounded_rect(Rect::new(0.0, 0.0, CORK_W, CORK_CAP_H), CORK_CAP_RADIUS),
             SCALE as f32,
         ),
         item_shade,
@@ -596,8 +601,8 @@ const PLUG_WAIST: f32 = 5.0;
 fn plug(images: &mut Assets<Image>) -> Handle<Image> {
     let mut raster = raster(Vec2::new(PLUG_W, PLUG_H));
     let cap = rounded_rect(Rect::new(0.0, 0.0, PLUG_W, PLUG_CAP_H), 4.0);
-    let shoulder = Vec2::new(2.0, PLUG_CAP_H - 2.0);
-    let foot = Vec2::new(PLUG_WAIST, PLUG_H);
+    let shoulder = Vec2::new((PLUG_W - PLUG_BODY_W) * 0.5, PLUG_CAP_H - 2.0);
+    let foot = Vec2::new(shoulder.x + PLUG_WAIST, PLUG_H);
     let taper = union(
         triangle(
             shoulder,
